@@ -2,15 +2,21 @@
 
 import { ExternalLink } from "lucide-react";
 
+function getRecentTimestamp(hoursAgo: number) {
+  const d = new Date();
+  d.setTime(d.getTime() - hoursAgo * 60 * 60 * 1000);
+  return d.toISOString();
+}
+
 const MOCK_NEWS = [
-  { id: 1, headline: "HDFC Bank reports record Q4 profit, beats analyst estimates by 8%",           url: "https://www.moneycontrol.com/news/business/markets/",           source: "Moneycontrol",      published_at: "2026-05-24T09:15:00", sentiment: { positive: 0.8,  negative: 0.05 } },
-  { id: 2, headline: "Reliance Industries enters AI hardware space with ₹50,000 crore investment", url: "https://economictimes.indiatimes.com/markets/stocks/news/",      source: "Economic Times",   published_at: "2026-05-24T08:40:00", sentiment: { positive: 0.7,  negative: 0.1  } },
-  { id: 3, headline: "SEBI tightens F&O regulations; derivatives volumes expected to drop 30%",    url: "https://www.nseindia.com/",                                    source: "NSE India",         published_at: "2026-05-24T08:00:00", sentiment: { positive: 0.1,  negative: 0.6  } },
-  { id: 4, headline: "TCS bags $2.5 billion multi-year deal with European banking consortium",      url: "https://www.reuters.com/markets/",                             source: "Reuters",           published_at: "2026-05-24T07:30:00", sentiment: { positive: 0.85, negative: 0.05 } },
-  { id: 5, headline: "Infosys lowers FY27 revenue guidance on macro headwinds, stock slumps 4%",  url: "https://www.livemint.com/market/",                             source: "LiveMint",          published_at: "2026-05-24T07:00:00", sentiment: { positive: 0.05, negative: 0.75 } },
-  { id: 6, headline: "Bajaj Finance Q4 NII grows 26% YoY; asset quality remains stable",          url: "https://www.business-standard.com/markets/",                  source: "Business Standard", published_at: "2026-05-24T06:45:00", sentiment: { positive: 0.75, negative: 0.05 } },
-  { id: 7, headline: "Adani Ports wins ₹2,100 crore Colombo terminal expansion contract",         url: "https://www.cnbctv18.com/market/",                             source: "CNBC TV18",         published_at: "2026-05-24T06:20:00", sentiment: { positive: 0.7,  negative: 0.05 } },
-  { id: 8, headline: "r/IndianStockMarket: Should I exit midcaps ahead of Fed decision?",         url: "https://www.reddit.com/r/IndianStockMarket/",                  source: "Reddit",            published_at: "2026-05-24T05:55:00", sentiment: { positive: 0.1,  negative: 0.3  } },
+  { id: 1, headline: "HDFC Bank reports record Q4 profit, beats analyst estimates by 8%",           url: "https://www.moneycontrol.com/news/business/markets/",           source: "Moneycontrol",      published_at: getRecentTimestamp(0.5), sentiment: { positive: 0.8,  negative: 0.05 } },
+  { id: 2, headline: "Reliance Industries enters AI hardware space with ₹50,000 crore investment", url: "https://economictimes.indiatimes.com/markets/stocks/news/",      source: "Economic Times",   published_at: getRecentTimestamp(1.5), sentiment: { positive: 0.7,  negative: 0.1  } },
+  { id: 3, headline: "SEBI tightens F&O regulations; derivatives volumes expected to drop 30%",    url: "https://www.nseindia.com/",                                    source: "NSE India",         published_at: getRecentTimestamp(4),   sentiment: { positive: 0.1,  negative: 0.6  } },
+  { id: 4, headline: "TCS bags $2.5 billion multi-year deal with European banking consortium",      url: "https://www.reuters.com/markets/",                             source: "Reuters",           published_at: getRecentTimestamp(8),   sentiment: { positive: 0.85, negative: 0.05 } },
+  { id: 5, headline: "Infosys lowers FY27 revenue guidance on macro headwinds, stock slumps 4%",  url: "https://www.livemint.com/market/",                             source: "LiveMint",          published_at: getRecentTimestamp(14),  sentiment: { positive: 0.05, negative: 0.75 } },
+  { id: 6, headline: "Bajaj Finance Q4 NII grows 26% YoY; asset quality remains stable",          url: "https://www.business-standard.com/markets/",                  source: "Business Standard", published_at: getRecentTimestamp(22),  sentiment: { positive: 0.75, negative: 0.05 } },
+  { id: 7, headline: "Adani Ports wins ₹2,100 crore Colombo terminal expansion contract",         url: "https://www.cnbctv18.com/market/",                             source: "CNBC TV18",         published_at: getRecentTimestamp(29),  sentiment: { positive: 0.7,  negative: 0.05 } },
+  { id: 8, headline: "r/IndianStockMarket: Should I exit midcaps ahead of Fed decision?",         url: "https://www.reddit.com/r/IndianStockMarket/",                  source: "Reddit",            published_at: getRecentTimestamp(38),  sentiment: { positive: 0.1,  negative: 0.3  } },
 ];
 
 interface Props { items: any[]; loading: boolean; }

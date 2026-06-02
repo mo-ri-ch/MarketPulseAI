@@ -27,11 +27,31 @@ if SENTRY_DSN:
 
 app = FastAPI(title="Market Pulse AI Backend")
 
+async def cron_crawler_loop():
+    """Background task that runs 24/7 to fetch news every 15 minutes."""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info("[Scheduler] Starting 24/7 crawler loop...")
+    while True:
+        try:
+            logger.info("[Scheduler] Triggering scheduled news crawl...")
+            await fetch_and_save()
+            logger.info("[Scheduler] Scheduled news crawl complete.")
+        except Exception as e:
+            logger.error(f"[Scheduler] Error in scheduled crawl: {e}")
+        # Wait 15 minutes (900 seconds)
+        await asyncio.sleep(900)
+
+
 @app.on_event("startup")
 def on_startup():
     from database import engine, Base
     import models
     Base.metadata.create_all(bind=engine)
+
+    # Start 24/7 background scheduler loop
+    import asyncio
+    asyncio.create_task(cron_crawler_loop())
 
     # Self-healing migration to add is_archived column if it doesn't exist
     from sqlalchemy import inspect, text
