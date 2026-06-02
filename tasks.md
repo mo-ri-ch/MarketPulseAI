@@ -1,15 +1,15 @@
 # Market Pulse AI - Development Tasks
 
 ## Phase 1: Infrastructure
-- `[/]` **Frontend Setup**
+- `[x]` **Frontend Setup**
   - `[x]` Initialize React + Next.js project
   - `[x]` Configure UI library and styling framework
   - `[x]` Setup basic routing and project structure
-- `[/]` **Backend Setup**
-  - `[/]` Initialize FastAPI project
-  - `[/]` Setup environment variables & configuration management
-- `[/]` **Database Setup**
-  - `[/]` Provision PostgreSQL database
+- `[x]` **Backend Setup**
+  - `[x]` Initialize FastAPI project
+  - `[x]` Setup environment variables & configuration management
+- `[x]` **Database Setup**
+  - `[x]` Provision database (SQLite locally, PostgreSQL for production)
   - `[x]` Define and apply schema for `users` table
   - `[x]` Define and apply schema for `watchlists` table
   - `[x]` Define and apply schema for `news` table
@@ -73,6 +73,7 @@
   - `[x]` Build AI Summary Panel component
   - `[x]` Build Sentiment Panel component
   - `[x]` Build Light/Dark Theme toggle support using CSS variables and local storage persistence
+  - `[x]` Build dynamic news archiving logic to keep only last 2 days of news active
 - `[x]` **Alerts System**
   - `[x]` Backend logic for Price movement alerts
   - `[x]` Backend logic for Breaking news alerts
@@ -81,14 +82,15 @@
   - `[x]` Implement Email delivery for alerts
 
 ## Phase 5: Production
-- `[/]` **Deployment**
+- `[x]` **Deployment**
   - `[x]` Dockerize frontend and backend
-  - `[ ]` Setup CI/CD pipeline
-  - `[ ]` Deploy database (RDS/Cloud SQL)
-  - `[ ]` Deploy backend to cloud provider
-  - `[ ]` Deploy frontend (Vercel/Netlify)
+  - `[x]` Setup CI/CD pipeline (Git integration triggers automatic deployment)
+  - `[x]` Deploy database (PostgreSQL on Railway)
+  - `[x]` Deploy backend to cloud provider (FastAPI on Railway)
+  - `[x]` Deploy frontend (Next.js on Vercel)
 - `[/]` **Monitoring & Optimization**
   - `[ ]` Setup error tracking (e.g., Sentry)
   - `[x]` Add logging for crawling and AI tasks
   - `[ ]` Optimize database queries and indexes
   - `[ ]` Optimize frontend performance and load times
+
