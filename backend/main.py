@@ -101,15 +101,30 @@ app.include_router(watchlist_router, tags=["watchlists"])
 def read_root():
     return {"message": "Market Pulse AI API is running"}
 
-@app.get("/debug/run-fetch-inline")
-async def debug_run_fetch_inline():
-    import traceback
-    try:
-        from crawlers.agent import fetch_and_save
-        result = await fetch_and_save()
-        return {"status": "success", "result": result}
-    except Exception as e:
-        return {"status": "error", "error": str(e), "traceback": traceback.format_exc()}
+@app.get("/debug/db-details")
+def debug_db_details(db: Session = Depends(get_db)):
+    sources = db.query(models.Source).all()
+    news_count = db.query(models.News).count()
+    news_unarchived = db.query(models.News).filter(models.News.is_archived == False).count()
+    news_items = db.query(models.News).order_by(models.News.published_at.desc()).limit(15).all()
+    
+    return {
+        "sources": [{"id": s.id, "name": s.name, "url": s.url, "rank": s.rank} for s in sources],
+        "news_count": news_count,
+        "news_unarchived_count": news_unarchived,
+        "latest_news": [
+            {
+                "id": n.id,
+                "headline": n.headline,
+                "url": n.url,
+                "source_id": n.source_id,
+                "published_at": n.published_at.isoformat() if n.published_at else None,
+                "is_archived": n.is_archived
+            }
+            for n in news_items
+        ]
+    }
+
 
 
 
