@@ -15,7 +15,7 @@ from crawlers.primary import (
 from crawlers.secondary import (
     ReutersCrawler, YahooFinanceCrawler, EconomicTimesCrawler,
     LiveMintCrawler, BusinessStandardCrawler, CNBCTv18Crawler,
-    RedditCrawler, GoogleNewsRSSCrawler,
+    RedditCrawler, GoogleNewsRSSCrawler, MoneycontrolRSSCrawler,
 )
 from database import SessionLocal
 import models
@@ -36,6 +36,7 @@ ALL_CRAWLERS = [
     RedditCrawler(),
     FrontPageCrawler(),
     GoogleNewsRSSCrawler(),
+    MoneycontrolRSSCrawler(),
 ]
 
 

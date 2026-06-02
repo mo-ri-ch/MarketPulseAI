@@ -256,3 +256,53 @@ class GoogleNewsRSSCrawler(BaseCrawler):
             logging.getLogger(__name__).warning(f"[Google News RSS] Scraping failed: {e}")
             return []
 
+
+class MoneycontrolRSSCrawler(BaseCrawler):
+    """Google News RSS Crawler restricted specifically to Moneycontrol articles."""
+    source_name = "Moneycontrol"
+    source_url = "https://news.google.com/rss/search?q=site:moneycontrol.com+stock+market+india+business&hl=en-IN&gl=IN&ceid=IN:en"
+    source_rank = 2
+
+    async def scrape(self) -> list[NewsItem]:
+        try:
+            import xml.etree.ElementTree as ET
+            from crawlers.extractor import extract_timestamp, extract_tickers
+
+            html = await self.fetch_html(self.source_url)
+            if not html:
+                return []
+            
+            root = ET.fromstring(html.encode("utf-8"))
+            items = []
+            
+            for item in root.findall(".//item")[:25]:
+                title_full = item.find("title")
+                title_text = title_full.text if title_full is not None else ""
+                if not title_text:
+                    continue
+
+                headline = title_text
+                # Clean up " - Moneycontrol" suffix from headlines
+                if " - " in title_text:
+                    parts = title_text.rsplit(" - ", 1)
+                    headline = parts[0]
+                
+                link_el = item.find("link")
+                url = link_el.text if link_el is not None else ""
+                
+                pub_date_el = item.find("pubDate")
+                pub_date_str = pub_date_el.text if pub_date_el is not None else ""
+                published_at = extract_timestamp(pub_date_str) if pub_date_str else None
+                
+                news_item = self.to_news_item(headline, url, published_at=published_at)
+                news_item.source_name = "Moneycontrol"
+                news_item.tickers = extract_tickers(headline)
+                items.append(news_item)
+                
+            return items
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"[Moneycontrol RSS] Scraping failed: {e}")
+            return []
+
+
