@@ -101,6 +101,33 @@ app.include_router(watchlist_router, tags=["watchlists"])
 def read_root():
     return {"message": "Market Pulse AI API is running"}
 
+@app.get("/debug/mc-test")
+async def debug_mc_test():
+    import httpx
+    urls = {
+        "html_page": "https://www.moneycontrol.com/news/business/markets/",
+        "rss_market": "https://www.moneycontrol.com/rss/marketreports.xml",
+        "rss_business": "https://www.moneycontrol.com/rss/business.xml",
+        "google_site_mc": "https://news.google.com/rss/search?q=site:moneycontrol.com+stock+market+india+business&hl=en-IN&gl=IN&ceid=IN:en"
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    }
+    results = {}
+    async with httpx.AsyncClient(headers=headers, timeout=10, follow_redirects=True) as client:
+        for name, url in urls.items():
+            try:
+                resp = await client.get(url)
+                results[name] = {
+                    "status_code": resp.status_code,
+                    "content_length": len(resp.text),
+                    "snippet": resp.text[:400]
+                }
+            except Exception as e:
+                results[name] = {"error": str(e)}
+    return results
+
+
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
 
