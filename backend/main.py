@@ -101,6 +101,17 @@ app.include_router(watchlist_router, tags=["watchlists"])
 def read_root():
     return {"message": "Market Pulse AI API is running"}
 
+@app.get("/debug/run-fetch-inline")
+async def debug_run_fetch_inline():
+    import traceback
+    try:
+        from crawlers.agent import fetch_and_save
+        result = await fetch_and_save()
+        return {"status": "success", "result": result}
+    except Exception as e:
+        return {"status": "error", "error": str(e), "traceback": traceback.format_exc()}
+
+
 
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
