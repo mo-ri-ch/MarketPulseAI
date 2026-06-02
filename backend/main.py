@@ -101,6 +101,33 @@ app.include_router(watchlist_router, tags=["watchlists"])
 def read_root():
     return {"message": "Market Pulse AI API is running"}
 
+@app.get("/debug/fetch-test")
+async def debug_fetch_test():
+    import httpx
+    urls = {
+        "google_news_rss": "https://news.google.com/rss/search?q=stock+market+india+business&hl=en-IN&gl=IN&ceid=IN:en",
+        "tradingview": "https://www.tradingview.com/news/",
+        "moneycontrol": "https://www.moneycontrol.com/news/business/markets/",
+        "reuters": "https://www.reuters.com/markets/"
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    }
+    results = {}
+    async with httpx.AsyncClient(headers=headers, timeout=10, follow_redirects=True) as client:
+        for name, url in urls.items():
+            try:
+                resp = await client.get(url)
+                results[name] = {
+                    "status_code": resp.status_code,
+                    "content_length": len(resp.text),
+                    "snippet": resp.text[:200]
+                }
+            except Exception as e:
+                results[name] = {"error": str(e)}
+    return results
+
+
 # ── Auth ─────────────────────────────────────────────────────────────────────
 
 @app.post("/signup", response_model=schemas.UserResponse)
