@@ -111,8 +111,36 @@ def save_news_items(items: list[NewsItem]) -> int:
     return saved
 
 
+def archive_old_news(db: Session):
+    """Archive news older than 2 days (48 hours) from current time."""
+    from datetime import datetime, timedelta
+    cutoff = datetime.utcnow() - timedelta(days=2)
+    try:
+        num_archived = (
+            db.query(models.News)
+            .filter(
+                models.News.published_at < cutoff,
+                models.News.is_archived == False
+            )
+            .update({models.News.is_archived: True}, synchronize_session=False)
+        )
+        db.commit()
+        if num_archived > 0:
+            logger.info(f"[Archiver] Archived {num_archived} news items older than {cutoff}.")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[Archiver] Error running archiver: {e}")
+
+
 async def fetch_and_save() -> dict:
     """Main entry point: fetch from all sources and persist to DB."""
+    # Archive old news on crawl trigger
+    db_cleanup = SessionLocal()
+    try:
+        archive_old_news(db_cleanup)
+    finally:
+        db_cleanup.close()
+
     items = await run_all_crawlers()
     saved = save_news_items(items)
     try:

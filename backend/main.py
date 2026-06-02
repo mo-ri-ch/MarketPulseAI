@@ -23,6 +23,25 @@ def on_startup():
     import models
     Base.metadata.create_all(bind=engine)
 
+    # Self-healing migration to add is_archived column if it doesn't exist
+    from sqlalchemy import inspect, text
+    inspector = inspect(engine)
+    try:
+        columns = [c["name"] for c in inspector.get_columns("news")]
+        if "is_archived" not in columns:
+            with engine.begin() as conn:
+                driver = engine.url.drivername
+                if "postgresql" in driver:
+                    conn.execute(text("ALTER TABLE news ADD COLUMN is_archived BOOLEAN DEFAULT FALSE NOT NULL"))
+                else:
+                    conn.execute(text("ALTER TABLE news ADD COLUMN is_archived BOOLEAN DEFAULT 0 NOT NULL"))
+            import logging
+            logging.getLogger(__name__).info("[Startup] Added is_archived column to news table.")
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"[Startup] Migration check failed: {e}")
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
@@ -74,8 +93,12 @@ async def trigger_news_fetch(background_tasks: BackgroundTasks):
 @app.get("/news")
 def get_news(db: Session = Depends(get_db), skip: int = 0, limit: int = 50):
     """Return latest news items from the database."""
+    from crawlers.agent import archive_old_news
+    archive_old_news(db)
+
     news = (
         db.query(models.News)
+        .filter(models.News.is_archived == False)
         .order_by(models.News.published_at.desc())
         .offset(skip)
         .limit(limit)
@@ -110,11 +133,15 @@ async def analyse_news():
 @app.get("/news/insights")
 def get_insights(db: Session = Depends(get_db), limit: int = 30):
     """Return news articles with their AI summaries, sentiment scores, and source details."""
+    from crawlers.agent import archive_old_news
+    archive_old_news(db)
+
     rows = (
         db.query(models.News, models.Source, models.Summary, models.SentimentScore)
         .outerjoin(models.Source, models.Source.id == models.News.source_id)
         .outerjoin(models.Summary, models.Summary.news_id == models.News.id)
         .outerjoin(models.SentimentScore, models.SentimentScore.news_id == models.News.id)
+        .filter(models.News.is_archived == False)
         .order_by(models.News.published_at.desc())
         .limit(limit)
         .all()
@@ -256,12 +283,16 @@ async def get_stock_analysis(query: str, db: Session = Depends(get_db)):
         conditions.append(models.News.headline.ilike(f"%{query}%"))
 
     # 3. Query related news with sentiment & summaries
+    from crawlers.agent import archive_old_news
+    archive_old_news(db)
+
     rows = (
         db.query(models.News, models.Source, models.Summary, models.SentimentScore)
         .outerjoin(models.Source, models.Source.id == models.News.source_id)
         .outerjoin(models.Summary, models.Summary.news_id == models.News.id)
         .outerjoin(models.SentimentScore, models.SentimentScore.news_id == models.News.id)
         .filter(or_(*conditions))
+        .filter(models.News.is_archived == False)
         .filter(models.News.published_at >= start_of_yesterday)
         .order_by(models.News.published_at.desc())
         .limit(20)

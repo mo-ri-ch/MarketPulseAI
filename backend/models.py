@@ -39,6 +39,8 @@ class News(Base):
     source_id = Column(Integer, ForeignKey("sources.id"))
     published_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    is_archived = Column(Boolean, default=False, nullable=False)
+
 
 class Alert(Base):
     __tablename__ = "alerts"
