@@ -38,31 +38,31 @@ export default function AISummaryPanel({ items }: Props) {
 
   return (
     <div>
-      <h2 style={{ fontWeight: 600, fontSize: 13, color: "#111", marginBottom: 12 }}>AI Summaries</h2>
+      <h2 style={{ fontWeight: 600, fontSize: 13, color: "var(--fg)", marginBottom: 12, transition: "color 0.2s ease" }}>AI Summaries</h2>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
         {summaries.slice(0, 5).map((item, i) => {
           const isOpen = expanded === i;
           return (
-            <div key={item.id ?? i} style={{ borderBottom: "1px solid #f3f4f6" }}>
+            <div key={item.id ?? i} style={{ borderBottom: "1px solid var(--border)", transition: "border-color 0.2s ease" }}>
               <button
                 onClick={() => setExpanded(isOpen ? null : i)}
                 style={{ width: "100%", textAlign: "left", background: "none", border: "none", cursor: "pointer", padding: "10px 0", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}
               >
                 <div>
-                  <div style={{ fontWeight: 500, fontSize: 13, color: "#111", marginBottom: 2 }}>{item.headline}</div>
-                  <div style={{ fontSize: 11, color: "#9ca3af" }}>
+                  <div style={{ fontWeight: 500, fontSize: 13, color: "var(--fg)", marginBottom: 2, transition: "color 0.2s ease" }}>{item.headline}</div>
+                  <div style={{ fontSize: 11, color: "var(--muted)", transition: "color 0.2s ease" }}>
                     {(item.tickers || []).join(", ")}
                     {item.duplicate_count > 0 && ` · ${item.duplicate_count} sources`}
                   </div>
                 </div>
-                <span style={{ color: "#9ca3af", flexShrink: 0 }}>
+                <span style={{ color: "var(--muted)", flexShrink: 0, transition: "color 0.2s ease" }}>
                   {isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                 </span>
               </button>
 
               {isOpen && (
-                <div style={{ paddingBottom: 10, fontSize: 13, color: "#374151", lineHeight: 1.6 }}>
+                <div style={{ paddingBottom: 10, fontSize: 13, color: "var(--fg)", opacity: 0.85, lineHeight: 1.6 }}>
                   {item.summary}
                 </div>
               )}

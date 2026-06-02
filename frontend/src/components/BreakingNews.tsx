@@ -24,9 +24,9 @@ function timeAgo(dateStr: string) {
 
 function sentimentLabel(s: any) {
   if (!s) return null;
-  if (s.positive > 0.5) return { label: "Bullish", color: "#16a34a" };
-  if (s.negative > 0.5) return { label: "Bearish", color: "#dc2626" };
-  return { label: "Neutral", color: "#ca8a04" };
+  if (s.positive > 0.5) return { label: "Bullish", color: "var(--green)" };
+  if (s.negative > 0.5) return { label: "Bearish", color: "var(--red)" };
+  return { label: "Neutral", color: "var(--yellow)" };
 }
 
 export default function BreakingNews({ items, loading }: Props) {
@@ -35,8 +35,8 @@ export default function BreakingNews({ items, loading }: Props) {
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-        <h2 style={{ fontWeight: 600, fontSize: 13, color: "#111" }}>News</h2>
-        <span style={{ fontSize: 12, color: "#9ca3af" }}>
+        <h2 style={{ fontWeight: 600, fontSize: 13, color: "var(--fg)", transition: "color 0.2s ease" }}>News</h2>
+        <span style={{ fontSize: 12, color: "var(--muted)", transition: "color 0.2s ease" }}>
           {loading ? "Fetching…" : `${news.length} stories`}
         </span>
       </div>
@@ -45,19 +45,19 @@ export default function BreakingNews({ items, loading }: Props) {
         {news.slice(0, 8).map((item, i) => {
           const sent = sentimentLabel(item.sentiment);
           return (
-            <div key={item.id ?? i} style={{ padding: "10px 0", borderBottom: "1px solid #f3f4f6" }}>
+            <div key={item.id ?? i} style={{ padding: "10px 0", borderBottom: "1px solid var(--border)", transition: "border-color 0.2s ease" }}>
               <a
                 href={item.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ fontWeight: 500, fontSize: 13, color: "#111", textDecoration: "none", display: "block", marginBottom: 4, lineHeight: 1.4 }}
+                style={{ fontWeight: 500, fontSize: 13, color: "var(--fg)", textDecoration: "none", display: "block", marginBottom: 4, lineHeight: 1.4, transition: "color 0.2s ease" }}
               >
                 {item.headline}
               </a>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 11, color: "#9ca3af" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 11, color: "var(--muted)", transition: "color 0.2s ease" }}>
                 <span>{item.source}</span>
                 {item.published_at && <span>{timeAgo(item.published_at)}</span>}
-                {sent && <span style={{ color: sent.color }}>{sent.label}</span>}
+                {sent && <span style={{ color: sent.color, transition: "color 0.2s ease" }}>{sent.label}</span>}
               </div>
             </div>
           );

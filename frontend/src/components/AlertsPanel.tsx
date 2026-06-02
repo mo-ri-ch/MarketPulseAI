@@ -26,11 +26,11 @@ export default function AlertsPanel() {
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-        <h2 style={{ fontWeight: 600, fontSize: 13, color: "#111" }}>Alerts <span style={{ color: "#9ca3af", fontWeight: 400 }}>({alerts.length})</span></h2>
+        <h2 style={{ fontWeight: 600, fontSize: 13, color: "var(--fg)", transition: "color 0.2s ease" }}>Alerts <span style={{ color: "var(--muted)", fontWeight: 400, transition: "color 0.2s ease" }}>({alerts.length})</span></h2>
         <button
           id="new-alert-btn"
           onClick={() => setAdding(!adding)}
-          style={{ fontSize: 11, color: "#6b7280", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 3 }}
+          style={{ fontSize: 11, color: "var(--muted)", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 3, transition: "color 0.2s ease" }}
         >
           <Plus size={12} /> New
         </button>
@@ -41,7 +41,7 @@ export default function AlertsPanel() {
           <select
             value={form.type}
             onChange={(e) => setForm({ ...form, type: e.target.value })}
-            style={{ width: "100%", padding: "6px 8px", border: "1px solid #e5e7eb", borderRadius: 4, fontSize: 12, outline: "none", background: "#fff" }}
+            style={{ width: "100%", padding: "6px 8px", border: "1px solid var(--border)", borderRadius: 4, fontSize: 12, outline: "none", background: "var(--bg)", color: "var(--fg)", transition: "all 0.2s ease" }}
           >
             <option>Price</option>
             <option>News</option>
@@ -51,17 +51,17 @@ export default function AlertsPanel() {
             placeholder="Ticker (e.g. RELIANCE)"
             value={form.target}
             onChange={(e) => setForm({ ...form, target: e.target.value })}
-            style={{ width: "100%", padding: "6px 8px", border: "1px solid #e5e7eb", borderRadius: 4, fontSize: 12, outline: "none" }}
+            style={{ width: "100%", padding: "6px 8px", border: "1px solid var(--border)", borderRadius: 4, fontSize: 12, outline: "none", background: "var(--bg)", color: "var(--fg)", transition: "all 0.2s ease" }}
           />
           <input
             placeholder="Condition (e.g. price > 2500)"
             value={form.condition}
             onChange={(e) => setForm({ ...form, condition: e.target.value })}
-            style={{ width: "100%", padding: "6px 8px", border: "1px solid #e5e7eb", borderRadius: 4, fontSize: 12, outline: "none" }}
+            style={{ width: "100%", padding: "6px 8px", border: "1px solid var(--border)", borderRadius: 4, fontSize: 12, outline: "none", background: "var(--bg)", color: "var(--fg)", transition: "all 0.2s ease" }}
           />
           <button
             onClick={addAlert}
-            style={{ padding: "6px", background: "#111", color: "#fff", border: "none", borderRadius: 4, fontSize: 12, cursor: "pointer" }}
+            style={{ padding: "6px", background: "var(--fg)", color: "var(--bg)", border: "none", borderRadius: 4, fontSize: 12, cursor: "pointer", transition: "all 0.2s ease" }}
           >
             Create
           </button>
@@ -70,14 +70,14 @@ export default function AlertsPanel() {
 
       <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
         {alerts.map((alert) => (
-          <div key={alert.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #f3f4f6" }}>
+          <div key={alert.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border)", transition: "border-color 0.2s ease" }}>
             <div>
-              <span style={{ fontWeight: 500, fontSize: 13 }}>{alert.target}</span>
-              <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 6 }}>{alert.type} · {alert.condition}</span>
+              <span style={{ fontWeight: 500, fontSize: 13, color: "var(--fg)" }}>{alert.target}</span>
+              <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 6, transition: "color 0.2s ease" }}>{alert.type} · {alert.condition}</span>
             </div>
             <button
               onClick={() => removeAlert(alert.id)}
-              style={{ background: "none", border: "none", cursor: "pointer", color: "#d1d5db", padding: 0, display: "flex" }}
+              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 0, display: "flex", transition: "color 0.2s ease" }}
             >
               <X size={12} />
             </button>

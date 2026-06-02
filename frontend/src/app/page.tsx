@@ -17,6 +17,30 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [selectedStock, setSelectedStock] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+
+  useEffect(() => {
+    const saved = localStorage.getItem("theme");
+    if (saved === "dark" || (!saved && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
+      setTheme("dark");
+      document.documentElement.classList.add("dark");
+    } else {
+      setTheme("light");
+      document.documentElement.classList.remove("dark");
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    if (theme === "light") {
+      setTheme("dark");
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("theme", "dark");
+    } else {
+      setTheme("light");
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem("theme", "light");
+    }
+  };
 
   const fetchInsights = useCallback(async () => {
     setLoading(true);
@@ -42,8 +66,8 @@ export default function Dashboard() {
   }, [fetchInsights]);
 
   return (
-    <div style={{ minHeight: "100vh", background: "#fff", color: "#111" }}>
-      <Header onRefresh={fetchInsights} loading={loading} lastRefresh={lastRefresh} />
+    <div style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--fg)", transition: "background-color 0.2s ease, color 0.2s ease" }}>
+      <Header onRefresh={fetchInsights} loading={loading} lastRefresh={lastRefresh} theme={theme} toggleTheme={toggleTheme} />
       <MarketSummary />
 
       <main style={{ maxWidth: 1200, margin: "0 auto", padding: "28px 24px", display: "grid", gridTemplateColumns: "200px 1fr 200px", gap: 40 }}>

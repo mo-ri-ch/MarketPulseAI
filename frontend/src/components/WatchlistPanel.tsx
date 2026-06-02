@@ -38,13 +38,13 @@ export default function WatchlistPanel({ onSelectStock }: Props) {
     <div>
       {/* Tabs */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-        <h2 style={{ fontWeight: 600, fontSize: 13, color: "#111" }}>Watchlist</h2>
+        <h2 style={{ fontWeight: 600, fontSize: 13, color: "var(--fg)", transition: "color 0.2s ease" }}>Watchlist</h2>
         <div style={{ display: "flex", gap: 4 }}>
           {lists.map((l) => (
             <button
               key={l.id}
               onClick={() => setActiveId(l.id)}
-              style={{ fontSize: 11, padding: "2px 8px", border: "1px solid", borderRadius: 4, cursor: "pointer", background: activeId === l.id ? "#111" : "none", color: activeId === l.id ? "#fff" : "#6b7280", borderColor: activeId === l.id ? "#111" : "#e5e7eb" }}
+              style={{ fontSize: 11, padding: "2px 8px", border: "1px solid", borderRadius: 4, cursor: "pointer", background: activeId === l.id ? "var(--fg)" : "none", color: activeId === l.id ? "var(--bg)" : "var(--muted)", borderColor: activeId === l.id ? "var(--fg)" : "var(--border)", transition: "all 0.2s ease" }}
             >
               {l.name}
             </button>
@@ -58,14 +58,14 @@ export default function WatchlistPanel({ onSelectStock }: Props) {
           <div
             key={ticker}
             onClick={() => onSelectStock?.(ticker)}
-            style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #f3f4f6", cursor: "pointer" }}
+            style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border)", cursor: "pointer", transition: "border-color 0.2s ease" }}
           >
-            <span style={{ fontWeight: 500, fontSize: 13 }}>{ticker}</span>
+            <span style={{ fontWeight: 500, fontSize: 13, color: "var(--fg)" }}>{ticker}</span>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 12, color: "#16a34a" }}>+0.42%</span>
+              <span style={{ fontSize: 12, color: "var(--green)" }}>+0.42%</span>
               <button
                 onClick={(e) => { e.stopPropagation(); removeStock(ticker); }}
-                style={{ background: "none", border: "none", cursor: "pointer", color: "#d1d5db", padding: 0, display: "flex" }}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 0, display: "flex" }}
               >
                 <X size={12} />
               </button>
@@ -85,22 +85,22 @@ export default function WatchlistPanel({ onSelectStock }: Props) {
               placeholder="Search ticker…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              style={{ width: "100%", padding: "6px 8px", border: "1px solid #e5e7eb", borderRadius: 4, fontSize: 12, outline: "none" }}
+              style={{ width: "100%", padding: "6px 8px", border: "1px solid var(--border)", borderRadius: 4, fontSize: 12, outline: "none", background: "var(--bg)", color: "var(--fg)", transition: "all 0.2s ease" }}
             />
             {search.length > 0 && suggestions.length > 0 && (
-              <div style={{ border: "1px solid #e5e7eb", borderRadius: 4, marginTop: 4, overflow: "hidden" }}>
+              <div style={{ border: "1px solid var(--border)", borderRadius: 4, marginTop: 4, overflow: "hidden", background: "var(--bg)" }}>
                 {suggestions.slice(0, 5).map((s) => (
                   <button
                     key={s}
                     onClick={() => addStock(s)}
-                    style={{ width: "100%", textAlign: "left", padding: "6px 8px", fontSize: 12, background: "none", border: "none", cursor: "pointer", borderBottom: "1px solid #f3f4f6" }}
+                    style={{ width: "100%", textAlign: "left", padding: "6px 8px", fontSize: 12, background: "none", border: "none", cursor: "pointer", borderBottom: "1px solid var(--border)", color: "var(--fg)", transition: "all 0.2s ease" }}
                   >
                     {s}
                   </button>
                 ))}
               </div>
             )}
-            <button onClick={() => setAdding(false)} style={{ fontSize: 11, color: "#9ca3af", marginTop: 6, background: "none", border: "none", cursor: "pointer" }}>
+            <button onClick={() => setAdding(false)} style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, background: "none", border: "none", cursor: "pointer" }}>
               Cancel
             </button>
           </div>
@@ -108,7 +108,7 @@ export default function WatchlistPanel({ onSelectStock }: Props) {
           <button
             id="add-stock-btn"
             onClick={() => setAdding(true)}
-            style={{ fontSize: 12, color: "#6b7280", background: "none", border: "1px dashed #d1d5db", borderRadius: 4, padding: "5px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
+            style={{ fontSize: 12, color: "var(--muted)", background: "none", border: "1px dashed var(--border)", borderRadius: 4, padding: "5px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, transition: "all 0.2s ease" }}
           >
             <Plus size={12} /> Add stock
           </button>

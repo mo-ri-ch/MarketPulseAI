@@ -72,6 +72,7 @@
   - `[x]` Build Breaking News feed component
   - `[x]` Build AI Summary Panel component
   - `[x]` Build Sentiment Panel component
+  - `[x]` Build Light/Dark Theme toggle support using CSS variables and local storage persistence
 - `[x]` **Alerts System**
   - `[x]` Backend logic for Price movement alerts
   - `[x]` Backend logic for Breaking news alerts

@@ -11,12 +11,12 @@ const INDICES = [
 
 export default function MarketSummary() {
   return (
-    <div style={{ borderBottom: "1px solid #e5e7eb", display: "flex", gap: 32, padding: "12px 24px", overflowX: "auto" }}>
+    <div style={{ borderBottom: "1px solid var(--border)", display: "flex", gap: 32, padding: "12px 24px", overflowX: "auto", transition: "border-color 0.2s ease" }}>
       {INDICES.map((idx) => (
         <div key={idx.name} style={{ flexShrink: 0 }}>
-          <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 2 }}>{idx.name}</div>
+          <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 2, transition: "color 0.2s ease" }}>{idx.name}</div>
           <div style={{ fontWeight: 600, fontSize: 14 }}>{idx.value}</div>
-          <div style={{ fontSize: 12, color: idx.up ? "#16a34a" : "#dc2626" }}>{idx.change}</div>
+          <div style={{ fontSize: 12, color: idx.up ? "var(--green)" : "var(--red)", transition: "color 0.2s ease" }}>{idx.change}</div>
         </div>
       ))}
     </div>
