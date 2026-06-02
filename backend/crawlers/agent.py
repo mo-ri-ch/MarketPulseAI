@@ -151,7 +151,6 @@ async def fetch_and_save() -> dict:
         logger.error(f"[Agent] AI Pipeline execution error: {e}")
     try:
         from ai.alerts_evaluator import evaluate_alerts
-        from database import SessionLocal
         db = SessionLocal()
         try:
             evaluate_alerts(db)

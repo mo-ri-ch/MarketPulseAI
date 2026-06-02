@@ -40,6 +40,10 @@ def extract_timestamp(date_str: str):
         "%d %b %Y %I:%M %p",        # 24 May 2026 10:30 AM
         "%d/%m/%Y %H:%M",           # 24/05/2026 10:30
         "%Y-%m-%d",
+        "%a, %d %b %Y %H:%M:%S %Z", # Tue, 02 Jun 2026 12:00:00 GMT (RSS format)
+        "%a, %d %b %Y %H:%M:%S %z", # Tue, 02 Jun 2026 12:00:00 +0000 (RSS format with offset)
+        "%d %b %Y %H:%M:%S %Z",     # 02 Jun 2026 12:00:00 GMT
+        "%d %b %Y %H:%M:%S %z",     # 02 Jun 2026 12:00:00 +0530
     ]
 
     if not date_str:
