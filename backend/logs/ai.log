@@ -1,0 +1,6 @@
+2026-05-25 03:55:18,554 [INFO] ai.pipeline (pipeline.py:40): [AI Pipeline] Processing 66 raw items...
+2026-05-25 03:55:18,560 [INFO] ai.pipeline (pipeline.py:44): [AI Pipeline] Reduced to 59 unique clusters.
+2026-05-25 03:55:18,563 [INFO] ai.pipeline (pipeline.py:79): [AI Pipeline] Done. Top story: Acquisition
+2026-05-25 03:55:18,737 [INFO] ai.pipeline (pipeline.py:129): [AI Pipeline] Saved AI results for 59 articles.
+2026-05-25 03:55:18,791 [INFO] ai.alerts_evaluator (alerts_evaluator.py:49): [Alerts Evaluator] Starting active alerts check...
+2026-05-25 03:55:18,794 [INFO] ai.alerts_evaluator (alerts_evaluator.py:53): [Alerts Evaluator] No active alerts found in the database.

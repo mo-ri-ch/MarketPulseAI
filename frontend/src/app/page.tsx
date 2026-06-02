@@ -10,6 +10,8 @@ import SentimentPanel from "@/components/SentimentPanel";
 import AlertsPanel from "@/components/AlertsPanel";
 import StockAnalysisModal from "@/components/StockAnalysisModal";
 
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 export default function Dashboard() {
   const [insights, setInsights] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -19,21 +21,15 @@ export default function Dashboard() {
   const fetchInsights = useCallback(async () => {
     setLoading(true);
     try {
-      // Step 1: Trigger live crawl in the background
-      await fetch("http://localhost:8000/news/fetch", { method: "POST" }).catch(() => {});
-
-      // Step 2: Give crawlers ~3s head-start, then load whatever is in the DB
+      await fetch(`${API}/news/fetch`, { method: "POST" }).catch(() => {});
       await new Promise((r) => setTimeout(r, 3000));
-
-      // Step 3: Load AI-enriched articles (includes real article URLs from crawlers)
-      const res = await fetch("http://localhost:8000/news/insights?limit=30");
+      const res = await fetch(`${API}/news/insights?limit=30`);
       if (res.ok) {
-        const data = await res.json();
-        setInsights(data);
+        setInsights(await res.json());
         setLastRefresh(new Date());
       }
     } catch {
-      // API not running yet – component falls back to built-in mock data
+      // falls back to mock data
     } finally {
       setLoading(false);
     }
@@ -41,37 +37,32 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchInsights();
-    const interval = setInterval(fetchInsights, 5 * 60 * 1000); // auto-refresh every 5 min
-    return () => clearInterval(interval);
+    const t = setInterval(fetchInsights, 5 * 60 * 1000);
+    return () => clearInterval(t);
   }, [fetchInsights]);
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div style={{ minHeight: "100vh", background: "#fff", color: "#111" }}>
       <Header onRefresh={fetchInsights} loading={loading} lastRefresh={lastRefresh} />
+      <MarketSummary />
 
-      <main className="flex-1 max-w-[1600px] mx-auto w-full px-4 py-6 space-y-6">
-        {/* Row 1: Market Summary */}
-        <MarketSummary />
+      <main style={{ maxWidth: 1200, margin: "0 auto", padding: "28px 24px", display: "grid", gridTemplateColumns: "200px 1fr 200px", gap: 40 }}>
+        {/* Left: Watchlist */}
+        <aside>
+          <WatchlistPanel onSelectStock={setSelectedStock} />
+        </aside>
 
-        {/* Row 2: Main content grid */}
-        <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
-          {/* Left column: Watchlist */}
-          <div className="xl:col-span-1">
-            <WatchlistPanel onSelectStock={setSelectedStock} />
-          </div>
+        {/* Center: News + AI Summaries */}
+        <section style={{ display: "flex", flexDirection: "column", gap: 36 }}>
+          <BreakingNews items={insights} loading={loading} />
+          <AISummaryPanel items={insights} />
+        </section>
 
-          {/* Center columns: News + AI */}
-          <div className="xl:col-span-2 space-y-6">
-            <BreakingNews items={insights} loading={loading} />
-            <AISummaryPanel items={insights} />
-          </div>
-
-          {/* Right column: Sentiment + Alerts */}
-          <div className="xl:col-span-1 space-y-6">
-            <SentimentPanel items={insights} />
-            <AlertsPanel />
-          </div>
-        </div>
+        {/* Right: Sentiment + Alerts */}
+        <aside style={{ display: "flex", flexDirection: "column", gap: 36 }}>
+          <SentimentPanel items={insights} />
+          <AlertsPanel />
+        </aside>
       </main>
 
       {selectedStock && (

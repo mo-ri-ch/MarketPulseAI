@@ -22,11 +22,8 @@ RUN pip install --no-cache-dir -r requirements.txt -r requirements_crawl.txt
 # Copy backend source code
 COPY . .
 
-# Make entrypoint executable
-RUN chmod +x entrypoint.sh
-
 # Expose port 8000
 EXPOSE 8000
 
 # Start FastAPI server using uvicorn
-CMD ["sh", "entrypoint.sh"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

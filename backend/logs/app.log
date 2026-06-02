@@ -1,0 +1,30 @@
+2026-05-25 03:55:07,368 [INFO] root (logger_config.py:78): Centralized logging system initialized: console, app.log, crawlers.log, ai.log configured.
+2026-05-25 03:55:16,431 [INFO] httpx (_client.py:1740): HTTP Request: GET https://www.moneycontrol.com/news/business/markets/ "HTTP/1.1 200 OK"
+2026-05-25 03:55:16,474 [INFO] httpx (_client.py:1740): HTTP Request: GET https://www.livemint.com/market "HTTP/1.1 200 OK"
+2026-05-25 03:55:16,482 [INFO] httpx (_client.py:1740): HTTP Request: GET https://www.motilaloswal.com/blog/stock-market-news/ "HTTP/1.1 301 Moved Permanently"
+2026-05-25 03:55:16,489 [INFO] httpx (_client.py:1740): HTTP Request: GET https://www.nseindia.com/ "HTTP/1.1 403 Forbidden"
+2026-05-25 03:55:16,502 [INFO] httpx (_client.py:1740): HTTP Request: GET https://www.reuters.com/markets/ "HTTP/1.1 401 HTTP Forbidden"
+2026-05-25 03:55:16,615 [WARNING] crawlers.base (base.py:52): [Reuters] Failed to fetch https://www.reuters.com/markets/: Client error '401 HTTP Forbidden' for url 'https://www.reuters.com/markets/'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-05-25 03:55:16,623 [INFO] httpx (_client.py:1740): HTTP Request: GET https://economictimes.indiatimes.com/markets "HTTP/1.1 200 OK"
+2026-05-25 03:55:16,781 [INFO] httpx (_client.py:1740): HTTP Request: GET https://www.cnbctv18.com/market/ "HTTP/1.1 200 OK"
+2026-05-25 03:55:17,077 [INFO] httpx (_client.py:1740): HTTP Request: GET https://www.business-standard.com/markets "HTTP/1.1 403 Forbidden"
+2026-05-25 03:55:17,079 [WARNING] crawlers.base (base.py:52): [Business Standard] Failed to fetch https://www.business-standard.com/markets: Client error '403 Forbidden' for url 'https://www.business-standard.com/markets'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403
+2026-05-25 03:55:17,087 [INFO] httpx (_client.py:1740): HTTP Request: GET https://www.motilaloswal.com/blog/stock-market-news "HTTP/1.1 404 Not Found"
+2026-05-25 03:55:17,099 [WARNING] crawlers.base (base.py:52): [Motilal Oswal] Failed to fetch https://www.motilaloswal.com/blog/stock-market-news/: Client error '404 Not Found' for url 'https://www.motilaloswal.com/blog/stock-market-news'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-05-25 03:55:17,123 [INFO] httpx (_client.py:1740): HTTP Request: GET https://finance.yahoo.com/topic/stock-market-news/ "HTTP/1.1 200 OK"
+2026-05-25 03:55:17,412 [INFO] httpx (_client.py:1740): HTTP Request: GET https://frontpageindia.com/ "HTTP/1.1 302 Moved Temporarily"
+2026-05-25 03:55:17,414 [INFO] httpx (_client.py:1740): HTTP Request: GET https://www.reddit.com/r/IndianStockMarket/hot.json?limit=25 "HTTP/1.1 200 OK"
+2026-05-25 03:55:17,477 [INFO] httpx (_client.py:1740): HTTP Request: GET https://www.tradingview.com/news/ "HTTP/1.1 200 OK"
+2026-05-25 03:55:17,781 [INFO] httpx (_client.py:1740): HTTP Request: GET https://domains.atom.com/lpd/name/frontpageindia.com "HTTP/1.1 200 OK"
+2026-05-25 03:55:18,331 [INFO] httpx (_client.py:1740): HTTP Request: GET https://www.nseindia.com/api/corporate-announcements?index=equities "HTTP/1.1 200 OK"
+2026-05-25 03:55:18,339 [INFO] crawlers.agent (agent.py:63): [Agent] Fetched 66 unique news items from 12 sources.
+2026-05-25 03:55:18,550 [INFO] crawlers.agent (agent.py:104): [Agent] Saved 66 new news items to database.
+2026-05-25 03:55:18,554 [INFO] ai.pipeline (pipeline.py:40): [AI Pipeline] Processing 66 raw items...
+2026-05-25 03:55:18,560 [INFO] ai.pipeline (pipeline.py:44): [AI Pipeline] Reduced to 59 unique clusters.
+2026-05-25 03:55:18,563 [INFO] ai.pipeline (pipeline.py:79): [AI Pipeline] Done. Top story: Acquisition
+2026-05-25 03:55:18,737 [INFO] ai.pipeline (pipeline.py:129): [AI Pipeline] Saved AI results for 59 articles.
+2026-05-25 03:55:18,791 [INFO] ai.alerts_evaluator (alerts_evaluator.py:49): [Alerts Evaluator] Starting active alerts check...
+2026-05-25 03:55:18,794 [INFO] ai.alerts_evaluator (alerts_evaluator.py:53): [Alerts Evaluator] No active alerts found in the database.

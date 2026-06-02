@@ -1,0 +1,8 @@
+2026-05-25 03:55:16,615 [WARNING] crawlers.base (base.py:52): [Reuters] Failed to fetch https://www.reuters.com/markets/: Client error '401 HTTP Forbidden' for url 'https://www.reuters.com/markets/'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-05-25 03:55:17,079 [WARNING] crawlers.base (base.py:52): [Business Standard] Failed to fetch https://www.business-standard.com/markets: Client error '403 Forbidden' for url 'https://www.business-standard.com/markets'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403
+2026-05-25 03:55:17,099 [WARNING] crawlers.base (base.py:52): [Motilal Oswal] Failed to fetch https://www.motilaloswal.com/blog/stock-market-news/: Client error '404 Not Found' for url 'https://www.motilaloswal.com/blog/stock-market-news'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-05-25 03:55:18,339 [INFO] crawlers.agent (agent.py:63): [Agent] Fetched 66 unique news items from 12 sources.
+2026-05-25 03:55:18,550 [INFO] crawlers.agent (agent.py:104): [Agent] Saved 66 new news items to database.
