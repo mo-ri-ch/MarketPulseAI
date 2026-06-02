@@ -1,0 +1,32 @@
+# ─── Python / Backend ────────────────────────────────────────────
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.py[cod]
+backend/.env
+backend/venv/
+backend/.venv/
+backend/*.db          # local SQLite dev database
+backend/logs/
+
+# Alembic generated files we don't want to track
+# (keep alembic/ and alembic.ini — they're needed for migrations)
+
+# ─── Node / Frontend ─────────────────────────────────────────────
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/.env.local
+frontend/.env*.local
+frontend/*.tsbuildinfo
+frontend/next-env.d.ts
+
+# ─── Docker ──────────────────────────────────────────────────────
+# (docker-compose.yml is committed — it documents the stack)
+
+# ─── OS / Editor ─────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.pem
+.vscode/
+.idea/
