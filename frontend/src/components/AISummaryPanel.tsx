@@ -34,11 +34,14 @@ interface Props { items: any[] }
 
 export default function AISummaryPanel({ items }: Props) {
   const [expanded, setExpanded] = useState<number | null>(null);
-  const summaries = items.filter((i) => i.summary).length > 0 ? items : MOCK_SUMMARIES;
+  const isDemo = items.filter((i) => i.summary).length === 0;
+  const summaries = !isDemo ? items : MOCK_SUMMARIES;
 
   return (
     <div>
-      <h2 style={{ fontWeight: 600, fontSize: 13, color: "var(--fg)", marginBottom: 12, transition: "color 0.2s ease" }}>AI Summaries</h2>
+      <h2 style={{ fontWeight: 600, fontSize: 13, color: "var(--fg)", marginBottom: 12, transition: "color 0.2s ease" }}>
+        AI Summaries {isDemo && <span style={{ color: "var(--yellow)", fontSize: 11, fontWeight: 400, marginLeft: 6 }}>(Demo Data)</span>}
+      </h2>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
         {summaries.slice(0, 5).map((item, i) => {

@@ -36,12 +36,15 @@ function sentimentLabel(s: any) {
 }
 
 export default function BreakingNews({ items, loading }: Props) {
-  const news = items.length > 0 ? items : MOCK_NEWS;
+  const isDemo = items.length === 0;
+  const news = !isDemo ? items : MOCK_NEWS;
 
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-        <h2 style={{ fontWeight: 600, fontSize: 13, color: "var(--fg)", transition: "color 0.2s ease" }}>News</h2>
+        <h2 style={{ fontWeight: 600, fontSize: 13, color: "var(--fg)", transition: "color 0.2s ease" }}>
+          News {isDemo && <span style={{ color: "var(--yellow)", fontSize: 11, fontWeight: 400, marginLeft: 6 }}>(Demo Data)</span>}
+        </h2>
         <span style={{ fontSize: 12, color: "var(--muted)", transition: "color 0.2s ease" }}>
           {loading ? "Fetching…" : `${news.length} stories`}
         </span>

@@ -20,9 +20,13 @@ export default function SentimentPanel({ items }: Props) {
   const label = pos > 55 ? "Bullish" : neg > 40 ? "Bearish" : "Mixed";
   const labelColor = pos > 55 ? "var(--green)" : neg > 40 ? "var(--red)" : "var(--yellow)";
 
+  const isDemo = items.length === 0;
+
   return (
     <div>
-      <h2 style={{ fontWeight: 600, fontSize: 13, color: "var(--fg)", marginBottom: 12, transition: "color 0.2s ease" }}>Sentiment</h2>
+      <h2 style={{ fontWeight: 600, fontSize: 13, color: "var(--fg)", marginBottom: 12, transition: "color 0.2s ease" }}>
+        Sentiment {isDemo && <span style={{ color: "var(--yellow)", fontSize: 11, fontWeight: 400, marginLeft: 6 }}>(Demo Data)</span>}
+      </h2>
 
       <div style={{ marginBottom: 8 }}>
         <span style={{ fontWeight: 600, fontSize: 18, color: labelColor, transition: "color 0.2s ease" }}>{label}</span>
