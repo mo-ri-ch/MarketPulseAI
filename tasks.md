@@ -88,9 +88,10 @@
   - `[x]` Deploy database (PostgreSQL on Railway)
   - `[x]` Deploy backend to cloud provider (FastAPI on Railway)
   - `[x]` Deploy frontend (Next.js on Vercel)
-- `[/]` **Monitoring & Optimization**
-  - `[ ]` Setup error tracking (e.g., Sentry)
-  - `[x]` Add logging for crawling and AI tasks
-  - `[ ]` Optimize database queries and indexes
-  - `[ ]` Optimize frontend performance and load times
+- `[x]` **Monitoring & Optimization**
+  - `[x]` Setup error tracking (e.g., Sentry integrated via sentry-sdk and env vars)
+  - `[x]` Add logging for crawling and AI tasks (centralized logging)
+  - `[x]` Optimize database queries and indexes (added index on news.published_at in models.py with dynamic self-healing index verification on startup)
+  - `[x]` Optimize frontend performance and load times (leveraged Next.js Turbopack production optimizer and code-splitting)
+
 

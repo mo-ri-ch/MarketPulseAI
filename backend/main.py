@@ -15,6 +15,16 @@ from routers.watchlist import router as watchlist_router
 
 load_dotenv()
 
+import sentry_sdk
+
+SENTRY_DSN = os.getenv("SENTRY_DSN", "")
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        traces_sample_rate=1.0,
+        send_default_pii=True
+    )
+
 app = FastAPI(title="Market Pulse AI Backend")
 
 @app.on_event("startup")
@@ -40,6 +50,17 @@ def on_startup():
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"[Startup] Migration check failed: {e}")
+
+    # Optimize news query performance by indexing published_at
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_news_published_at ON news (published_at)"))
+            import logging
+            logging.getLogger(__name__).info("[Startup] Verified index on news (published_at).")
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"[Startup] Index creation failed: {e}")
+
 
 
 app.add_middleware(

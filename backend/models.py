@@ -37,7 +37,7 @@ class News(Base):
     content = Column(Text, nullable=True)
     url = Column(String, unique=True, nullable=False)
     source_id = Column(Integer, ForeignKey("sources.id"))
-    published_at = Column(DateTime(timezone=True))
+    published_at = Column(DateTime(timezone=True), index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     is_archived = Column(Boolean, default=False, nullable=False)
 
