@@ -20,7 +20,7 @@
 - `[x]` **Authentication System**
   - `[x]` Implement user signup endpoint
   - `[x]` Implement user login/logout endpoints (JWT/Session)
-  - `[ ]` Integrate Google Login (OAuth) - Pending Client ID
+  - `[x]` Integrate Google Login (OAuth)
   - `[x]` Build frontend Auth UI components (Login/Signup pages)
 
 ## Phase 2: Search & Crawling

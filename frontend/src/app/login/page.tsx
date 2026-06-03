@@ -3,6 +3,9 @@
 import { useState } from "react";
 import { LogIn, UserPlus } from "lucide-react";
 import axios from "axios";
+import { GoogleLogin } from "@react-oauth/google";
+
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export default function LoginPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -18,10 +21,12 @@ export default function LoginPage() {
 
     try {
       if (isLogin) {
-        const res = await axios.post("http://localhost:8000/login", { email, password });
+        const res = await axios.post(`${API}/login`, { email, password });
+        localStorage.setItem("access_token", res.data.access_token);
         setMessage("Successfully logged in!");
+        window.location.href = "/";
       } else {
-        const res = await axios.post("http://localhost:8000/signup", { email, password });
+        const res = await axios.post(`${API}/signup`, { email, password });
         setMessage("Account created successfully! You can now log in.");
         setIsLogin(true);
       }
@@ -30,6 +35,27 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleGoogleSuccess = async (credentialResponse: any) => {
+    setMessage("");
+    setLoading(true);
+    try {
+      const res = await axios.post(`${API}/auth/google`, {
+        token: credentialResponse.credential,
+      });
+      localStorage.setItem("access_token", res.data.access_token);
+      setMessage("Successfully logged in with Google!");
+      window.location.href = "/";
+    } catch (err: any) {
+      setMessage(err.response?.data?.detail || "Google login failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleError = () => {
+    setMessage("Google login was cancelled or failed. Please try again.");
   };
 
   return (
@@ -73,7 +99,7 @@ export default function LoginPage() {
           </div>
 
           {message && (
-            <div className={`p-3 text-sm rounded-lg ${message.includes('error') || message.includes('Incorrect') || message.includes('already') ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-green-500/10 text-green-400 border border-green-500/20'}`}>
+            <div className={`p-3 text-sm rounded-lg ${message.includes('error') || message.includes('Incorrect') || message.includes('already') || message.includes('failed') || message.includes('cancelled') ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-green-500/10 text-green-400 border border-green-500/20'}`}>
               {message}
             </div>
           )}
@@ -93,7 +119,27 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <div className="pt-4 text-center text-sm relative z-10">
+        {/* Google Login Divider */}
+        <div className="relative z-10 flex items-center gap-3">
+          <div className="flex-1 h-px bg-card-border"></div>
+          <span className="text-xs text-muted uppercase tracking-wider">or</span>
+          <div className="flex-1 h-px bg-card-border"></div>
+        </div>
+
+        {/* Google Login Button */}
+        <div className="relative z-10 flex justify-center">
+          <GoogleLogin
+            onSuccess={handleGoogleSuccess}
+            onError={handleGoogleError}
+            theme="filled_black"
+            shape="pill"
+            size="large"
+            width="350"
+            text={isLogin ? "signin_with" : "signup_with"}
+          />
+        </div>
+
+        <div className="pt-2 text-center text-sm relative z-10">
           <span className="text-muted">
             {isLogin ? "Don't have an account?" : "Already have an account?"}
           </span>

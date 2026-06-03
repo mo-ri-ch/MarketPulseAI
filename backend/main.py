@@ -155,6 +155,63 @@ def login(user: schemas.UserCreate, db: Session = Depends(get_db)):
     access_token = auth.create_access_token(data={"sub": db_user.email})
     return {"access_token": access_token, "token_type": "bearer"}
 
+@app.post("/auth/google", response_model=schemas.Token)
+def google_login(payload: schemas.GoogleLoginRequest, db: Session = Depends(get_db)):
+    """Verify a Google id_token and return a JWT for the authenticated user."""
+    from google.oauth2 import id_token as google_id_token
+    from google.auth.transport import requests as google_requests
+    import logging
+
+    logger = logging.getLogger(__name__)
+    GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Google OAuth is not configured on the server.",
+        )
+
+    try:
+        idinfo = google_id_token.verify_oauth2_token(
+            payload.token,
+            google_requests.Request(),
+            GOOGLE_CLIENT_ID,
+        )
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Google token.",
+        )
+
+    email = idinfo.get("email")
+    google_id = idinfo.get("sub")
+
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Google account does not have an email address.",
+        )
+
+    # Look up user by google_id first, then by email
+    db_user = db.query(models.User).filter(models.User.google_id == google_id).first()
+    if not db_user:
+        db_user = db.query(models.User).filter(models.User.email == email).first()
+        if db_user:
+            # Link existing email-password account to Google
+            db_user.google_id = google_id
+            db.commit()
+
+    if not db_user:
+        # Create a brand-new Google-only account
+        db_user = models.User(email=email, google_id=google_id, hashed_password=None)
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+        logger.info(f"[Auth] Created new Google user: {email}")
+
+    access_token = auth.create_access_token(data={"sub": db_user.email})
+    return {"access_token": access_token, "token_type": "bearer"}
+
 # ── News Crawling ─────────────────────────────────────────────────────────────
 
 @app.post("/news/fetch")
