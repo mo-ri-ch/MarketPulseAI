@@ -35,6 +35,8 @@ interface Props {
   onClose: () => void;
 }
 
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 export default function StockAnalysisModal({ ticker, onClose }: Props) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -46,7 +48,7 @@ export default function StockAnalysisModal({ ticker, onClose }: Props) {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`http://localhost:8000/stocks/${ticker}/analysis`);
+        const res = await fetch(`${API}/stocks/${ticker}/analysis`);
         if (!res.ok) {
           throw new Error("Failed to fetch stock analysis details.");
         }
