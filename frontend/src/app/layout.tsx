@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { GoogleOAuthWrapper } from "@/components/GoogleOAuthWrapper";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -24,9 +23,7 @@ export default function RootLayout({
       className={`${inter.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground font-sans">
-        <GoogleOAuthWrapper>
-          {children}
-        </GoogleOAuthWrapper>
+        {children}
       </body>
     </html>
   );

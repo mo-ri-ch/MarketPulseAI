@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { LogIn, UserPlus } from "lucide-react";
 import axios from "axios";
-import { GoogleLogin } from "@react-oauth/google";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -26,7 +25,7 @@ export default function LoginPage() {
         setMessage("Successfully logged in!");
         window.location.href = "/";
       } else {
-        const res = await axios.post(`${API}/signup`, { email, password });
+        await axios.post(`${API}/signup`, { email, password });
         setMessage("Account created successfully! You can now log in.");
         setIsLogin(true);
       }
@@ -35,27 +34,6 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleGoogleSuccess = async (credentialResponse: any) => {
-    setMessage("");
-    setLoading(true);
-    try {
-      const res = await axios.post(`${API}/auth/google`, {
-        token: credentialResponse.credential,
-      });
-      localStorage.setItem("access_token", res.data.access_token);
-      setMessage("Successfully logged in with Google!");
-      window.location.href = "/";
-    } catch (err: any) {
-      setMessage(err.response?.data?.detail || "Google login failed. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleGoogleError = () => {
-    setMessage("Google login was cancelled or failed. Please try again.");
   };
 
   return (
@@ -118,26 +96,6 @@ export default function LoginPage() {
             )}
           </button>
         </form>
-
-        {/* Google Login Divider */}
-        <div className="relative z-10 flex items-center gap-3">
-          <div className="flex-1 h-px bg-card-border"></div>
-          <span className="text-xs text-muted uppercase tracking-wider">or</span>
-          <div className="flex-1 h-px bg-card-border"></div>
-        </div>
-
-        {/* Google Login Button */}
-        <div className="relative z-10 flex justify-center">
-          <GoogleLogin
-            onSuccess={handleGoogleSuccess}
-            onError={handleGoogleError}
-            theme="filled_black"
-            shape="pill"
-            size="large"
-            width="350"
-            text={isLogin ? "signin_with" : "signup_with"}
-          />
-        </div>
 
         <div className="pt-2 text-center text-sm relative z-10">
           <span className="text-muted">
