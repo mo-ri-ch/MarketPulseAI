@@ -5,9 +5,7 @@ import Header from "@/components/Header";
 import MarketSummary from "@/components/MarketSummary";
 import WatchlistPanel from "@/components/WatchlistPanel";
 import BreakingNews from "@/components/BreakingNews";
-import AISummaryPanel from "@/components/AISummaryPanel";
 import SentimentPanel from "@/components/SentimentPanel";
-import AlertsPanel from "@/components/AlertsPanel";
 import StockAnalysisView from "@/components/StockAnalysisView";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -102,22 +100,18 @@ export default function Dashboard() {
           <WatchlistPanel onSelectStock={setSelectedStock} />
         </aside>
 
-        {/* Center: Stock view OR all news + AI summaries */}
+        {/* Center: Stock view OR live news feed */}
         <section style={{ display: "flex", flexDirection: "column", gap: 36 }}>
           {selectedStock ? (
             <StockAnalysisView ticker={selectedStock} onBack={() => setSelectedStock(null)} />
           ) : (
-            <>
-              <BreakingNews items={insights} loading={loading} newCount={newCount} onDismissNew={dismissNewBanner} />
-              <AISummaryPanel items={insights} />
-            </>
+            <BreakingNews items={insights} loading={loading} newCount={newCount} onDismissNew={dismissNewBanner} />
           )}
         </section>
 
-        {/* Right: Sentiment + Alerts */}
+        {/* Right: Sentiment */}
         <aside style={{ display: "flex", flexDirection: "column", gap: 36 }}>
           <SentimentPanel items={insights} />
-          <AlertsPanel />
         </aside>
       </main>
     </div>
