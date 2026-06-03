@@ -3,7 +3,6 @@ Primary Source Connectors:
   - Moneycontrol
   - TradingView
   - NSE India
-  - FrontPage
   - Motilal Oswal
 """
 import re
@@ -94,30 +93,6 @@ class NSEIndiaCrawler(BaseCrawler):
                 continue
             item = self.to_news_item(headline, url)
             item.tickers = [ann.get("symbol", "")] if ann.get("symbol") else extract_tickers(headline)
-            items.append(item)
-
-        return items
-
-
-class FrontPageCrawler(BaseCrawler):
-    source_name = "FrontPage"
-    source_url = "https://frontpageindia.com/"
-    source_rank = 7
-
-    async def scrape(self) -> list[NewsItem]:
-        html = await self.fetch_html(self.source_url)
-        if not html:
-            return []
-        soup = self.parse(html)
-        items = []
-
-        for tag in soup.select("h2 a, h3 a, .post-title a")[:20]:
-            headline = tag.get_text(strip=True)
-            url = tag.get("href", "")
-            if not headline or not url:
-                continue
-            item = self.to_news_item(headline, url)
-            item.tickers = extract_tickers(headline)
             items.append(item)
 
         return items

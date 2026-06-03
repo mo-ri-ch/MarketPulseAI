@@ -257,6 +257,51 @@ class GoogleNewsRSSCrawler(BaseCrawler):
             return []
 
 
+class HinduBusinessLineCrawler(BaseCrawler):
+    """Hindu BusinessLine markets RSS — replaces the dead FrontPage source.
+    BL exposes a clean RSS feed with real pubDates, so timestamps are honest."""
+    source_name = "Hindu BusinessLine"
+    source_url = "https://www.thehindubusinessline.com/markets/feeder/default.rss"
+    source_rank = 3
+
+    async def scrape(self) -> list[NewsItem]:
+        try:
+            import xml.etree.ElementTree as ET
+            from crawlers.extractor import extract_timestamp, extract_tickers
+
+            xml_text = await self.fetch_html(self.source_url)
+            if not xml_text:
+                return []
+
+            root = ET.fromstring(xml_text.encode("utf-8"))
+            items = []
+
+            for item in root.findall(".//item")[:25]:
+                title_el = item.find("title")
+                title = title_el.text if title_el is not None else ""
+                if not title:
+                    continue
+
+                link_el = item.find("link")
+                url = link_el.text if link_el is not None else ""
+                if not url:
+                    continue
+
+                pub_date_el = item.find("pubDate")
+                pub_date_str = pub_date_el.text if pub_date_el is not None else ""
+                published_at = extract_timestamp(pub_date_str) if pub_date_str else None
+
+                news_item = self.to_news_item(title.strip(), url.strip(), published_at=published_at)
+                news_item.tickers = extract_tickers(title)
+                items.append(news_item)
+
+            return items
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"[Hindu BusinessLine] Scraping failed: {e}")
+            return []
+
+
 class MoneycontrolRSSCrawler(BaseCrawler):
     """Google News RSS Crawler restricted specifically to Moneycontrol articles."""
     source_name = "Moneycontrol"

@@ -12,12 +12,13 @@ from sqlalchemy.orm import Session
 from crawlers.base import NewsItem
 from crawlers.primary import (
     MoneycontrolCrawler, TradingViewCrawler, NSEIndiaCrawler,
-    FrontPageCrawler, MotilaOswalCrawler,
+    MotilaOswalCrawler,
 )
 from crawlers.secondary import (
     ReutersCrawler, YahooFinanceCrawler, EconomicTimesCrawler,
     LiveMintCrawler, BusinessStandardCrawler, CNBCTv18Crawler,
     RedditCrawler, GoogleNewsRSSCrawler, MoneycontrolRSSCrawler,
+    HinduBusinessLineCrawler,
 )
 from database import SessionLocal
 import models
@@ -74,7 +75,7 @@ ALL_CRAWLERS = [
     BusinessStandardCrawler(),
     CNBCTv18Crawler(),
     RedditCrawler(),
-    FrontPageCrawler(),
+    HinduBusinessLineCrawler(),
     GoogleNewsRSSCrawler(),
     MoneycontrolRSSCrawler(),
 ]

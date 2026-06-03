@@ -16,7 +16,7 @@ const SOURCE_COLORS: Record<string, { bg: string; text: string }> = {
   "Business Standard": { bg: "rgba(6,182,212,0.12)",   text: "#22d3ee" },
   "CNBC TV18":         { bg: "rgba(244,63,94,0.12)",   text: "#fb7185" },
   "Reddit":            { bg: "rgba(234,88,12,0.12)",   text: "#f97316" },
-  "FrontPage":         { bg: "rgba(20,184,166,0.12)",  text: "#2dd4bf" },
+  "Hindu BusinessLine":{ bg: "rgba(20,184,166,0.12)",  text: "#2dd4bf" },
   "Google News":       { bg: "rgba(99,102,241,0.12)",  text: "#818cf8" },
 };
 
