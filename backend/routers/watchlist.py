@@ -1,10 +1,15 @@
 """
 Watchlist CRUD + Alerts backend endpoints.
+
+All watchlist endpoints are scoped to the authenticated user via the
+get_current_user dependency. The previous `user_id` query param was insecure
+(any client could read/edit anyone else's watchlist) and has been removed.
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from database import get_db
+from auth import get_current_user
 import models
 
 router = APIRouter()
@@ -20,67 +25,112 @@ class WatchlistUpdate(BaseModel):
     stocks: str | None = None
 
 class AlertCreate(BaseModel):
-    user_id: int
     type: str       # PRICE | NEWS | SENTIMENT
     target: str     # ticker symbol or "*"
     condition: str  # e.g. "price > 1500" or "sentiment == negative"
 
+
+def _serialize(wl: models.Watchlist) -> dict:
+    """Return a frontend-friendly representation: stocks as a list."""
+    return {
+        "id": wl.id,
+        "name": wl.name,
+        "stocks": [s.strip().upper() for s in (wl.stocks or "").split(",") if s.strip()],
+    }
+
+
+def _owned_watchlist(db: Session, wl_id: int, user: models.User) -> models.Watchlist:
+    """Fetch a watchlist and verify it belongs to the authenticated user."""
+    wl = db.query(models.Watchlist).filter(models.Watchlist.id == wl_id).first()
+    if not wl or wl.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Watchlist not found")
+    return wl
+
 # ── Watchlists ─────────────────────────────────────────────────────────────────
 
 @router.post("/watchlists")
-def create_watchlist(data: WatchlistCreate, user_id: int, db: Session = Depends(get_db)):
-    wl = models.Watchlist(user_id=user_id, name=data.name, stocks=data.stocks)
+def create_watchlist(
+    data: WatchlistCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    wl = models.Watchlist(user_id=current_user.id, name=data.name, stocks=data.stocks)
     db.add(wl)
     db.commit()
     db.refresh(wl)
-    return wl
+    return _serialize(wl)
+
 
 @router.get("/watchlists")
-def get_watchlists(user_id: int, db: Session = Depends(get_db)):
-    return db.query(models.Watchlist).filter(models.Watchlist.user_id == user_id).all()
+def get_watchlists(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    rows = (
+        db.query(models.Watchlist)
+        .filter(models.Watchlist.user_id == current_user.id)
+        .order_by(models.Watchlist.id.asc())
+        .all()
+    )
+    return [_serialize(w) for w in rows]
+
 
 @router.put("/watchlists/{wl_id}")
-def update_watchlist(wl_id: int, data: WatchlistUpdate, db: Session = Depends(get_db)):
-    wl = db.query(models.Watchlist).filter(models.Watchlist.id == wl_id).first()
-    if not wl:
-        raise HTTPException(status_code=404, detail="Watchlist not found")
+def update_watchlist(
+    wl_id: int,
+    data: WatchlistUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    wl = _owned_watchlist(db, wl_id, current_user)
     if data.name is not None:
         wl.name = data.name
     if data.stocks is not None:
         wl.stocks = data.stocks
     db.commit()
     db.refresh(wl)
-    return wl
+    return _serialize(wl)
+
 
 @router.delete("/watchlists/{wl_id}")
-def delete_watchlist(wl_id: int, db: Session = Depends(get_db)):
-    wl = db.query(models.Watchlist).filter(models.Watchlist.id == wl_id).first()
-    if not wl:
-        raise HTTPException(status_code=404, detail="Watchlist not found")
+def delete_watchlist(
+    wl_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    wl = _owned_watchlist(db, wl_id, current_user)
     db.delete(wl)
     db.commit()
     return {"message": "Watchlist deleted"}
 
+
 @router.post("/watchlists/{wl_id}/add")
-def add_stock(wl_id: int, ticker: str, db: Session = Depends(get_db)):
-    wl = db.query(models.Watchlist).filter(models.Watchlist.id == wl_id).first()
-    if not wl:
-        raise HTTPException(status_code=404, detail="Watchlist not found")
+def add_stock(
+    wl_id: int,
+    ticker: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    wl = _owned_watchlist(db, wl_id, current_user)
     existing = [s.strip().upper() for s in (wl.stocks or "").split(",") if s.strip()]
-    ticker = ticker.upper()
-    if ticker not in existing:
+    ticker = ticker.upper().strip()
+    if ticker and ticker not in existing:
         existing.append(ticker)
     wl.stocks = ",".join(existing)
     db.commit()
     return {"stocks": existing}
 
+
 @router.post("/watchlists/{wl_id}/remove")
-def remove_stock(wl_id: int, ticker: str, db: Session = Depends(get_db)):
-    wl = db.query(models.Watchlist).filter(models.Watchlist.id == wl_id).first()
-    if not wl:
-        raise HTTPException(status_code=404, detail="Watchlist not found")
+def remove_stock(
+    wl_id: int,
+    ticker: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    wl = _owned_watchlist(db, wl_id, current_user)
     existing = [s.strip().upper() for s in (wl.stocks or "").split(",") if s.strip()]
-    ticker = ticker.upper()
+    ticker = ticker.upper().strip()
     existing = [s for s in existing if s != ticker]
     wl.stocks = ",".join(existing)
     db.commit()
@@ -89,9 +139,13 @@ def remove_stock(wl_id: int, ticker: str, db: Session = Depends(get_db)):
 # ── Alerts ─────────────────────────────────────────────────────────────────────
 
 @router.post("/alerts")
-def create_alert(data: AlertCreate, db: Session = Depends(get_db)):
+def create_alert(
+    data: AlertCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
     alert = models.Alert(
-        user_id=data.user_id,
+        user_id=current_user.id,
         type=data.type,
         target=data.target,
         condition=data.condition,
@@ -101,16 +155,29 @@ def create_alert(data: AlertCreate, db: Session = Depends(get_db)):
     db.refresh(alert)
     return alert
 
+
 @router.get("/alerts")
-def get_alerts(user_id: int, db: Session = Depends(get_db)):
+def get_alerts(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
     return db.query(models.Alert).filter(
-        models.Alert.user_id == user_id,
+        models.Alert.user_id == current_user.id,
         models.Alert.is_active == True,
     ).all()
 
+
 @router.delete("/alerts/{alert_id}")
-def delete_alert(alert_id: int, db: Session = Depends(get_db)):
-    alert = db.query(models.Alert).filter(models.Alert.id == alert_id).first()
+def delete_alert(
+    alert_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    alert = (
+        db.query(models.Alert)
+        .filter(models.Alert.id == alert_id, models.Alert.user_id == current_user.id)
+        .first()
+    )
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
     alert.is_active = False
