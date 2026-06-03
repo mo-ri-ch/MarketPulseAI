@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks, Response
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from sqlalchemy.orm import Session
@@ -122,10 +122,45 @@ def read_root():
 
 @app.get("/health")
 def health_check():
+    from crawlers.agent import LAST_CRAWLER_STATS, LAST_PIPELINE_STATUS
+    now = datetime.utcnow()
+    seconds_since_crawl = (now - _last_crawl_at).total_seconds() if _last_crawl_at else None
+    ok_count = sum(1 for s in LAST_CRAWLER_STATS.values() if s.get("ok"))
+    total_count = len(LAST_CRAWLER_STATS)
     return {
         "status": "ok",
+        "now_utc": now.isoformat(),
         "last_crawl_at": _last_crawl_at.isoformat() if _last_crawl_at else None,
+        "seconds_since_last_crawl": seconds_since_crawl,
         "crawl_interval_minutes": 10,
+        "scheduler_appears_stalled": seconds_since_crawl is not None and seconds_since_crawl > 900,
+        "crawlers_succeeding": f"{ok_count}/{total_count}" if total_count else "no crawl yet",
+        "ai_pipeline": LAST_PIPELINE_STATUS,
+        "env_present": {
+            "GEMINI_API_KEY": bool(os.getenv("GEMINI_API_KEY")),
+            "GOOGLE_CLIENT_ID": bool(os.getenv("GOOGLE_CLIENT_ID")),
+            "DATABASE_URL": bool(os.getenv("DATABASE_URL")),
+            "SECRET_KEY": bool(os.getenv("SECRET_KEY")),
+            "SENTRY_DSN": bool(os.getenv("SENTRY_DSN")),
+        },
+    }
+
+
+@app.get("/debug/crawler-status")
+def debug_crawler_status():
+    """Per-crawler success/failure from the most recent scheduled crawl."""
+    from crawlers.agent import LAST_CRAWLER_STATS, LAST_PIPELINE_STATUS, ALL_CRAWLERS
+    registered = [c.__class__.__name__ for c in ALL_CRAWLERS]
+    return {
+        "last_crawl_at": _last_crawl_at.isoformat() if _last_crawl_at else None,
+        "registered_crawlers": registered,
+        "per_crawler": LAST_CRAWLER_STATS,
+        "ai_pipeline": LAST_PIPELINE_STATUS,
+        "summary": {
+            "ok": sum(1 for s in LAST_CRAWLER_STATS.values() if s.get("ok")),
+            "failed": sum(1 for s in LAST_CRAWLER_STATS.values() if s.get("ok") is False),
+            "total_items_last_run": sum(s.get("count", 0) for s in LAST_CRAWLER_STATS.values()),
+        },
     }
 
 @app.get("/debug/db-details")
@@ -248,7 +283,7 @@ async def trigger_news_fetch(background_tasks: BackgroundTasks):
     return {"message": "News fetch triggered in background."}
 
 @app.get("/news")
-def get_news(db: Session = Depends(get_db), skip: int = 0, limit: int = 50):
+def get_news(response: Response, db: Session = Depends(get_db), skip: int = 0, limit: int = 50):
     """Return latest news items from the database."""
     from crawlers.agent import archive_old_news
     archive_old_news(db)
@@ -261,6 +296,7 @@ def get_news(db: Session = Depends(get_db), skip: int = 0, limit: int = 50):
         .limit(limit)
         .all()
     )
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     return [
         {
             "id": n.id,
@@ -288,7 +324,7 @@ async def analyse_news():
     return result
 
 @app.get("/news/insights")
-def get_insights(db: Session = Depends(get_db), limit: int = 30):
+def get_insights(response: Response, db: Session = Depends(get_db), limit: int = 30):
     """Return news articles with their AI summaries, sentiment scores, and source details."""
     from crawlers.agent import archive_old_news
     archive_old_news(db)
@@ -303,6 +339,7 @@ def get_insights(db: Session = Depends(get_db), limit: int = 30):
         .limit(limit)
         .all()
     )
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     return [
         {
             "id": news.id,

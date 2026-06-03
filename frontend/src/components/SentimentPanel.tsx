@@ -13,24 +13,32 @@ export default function SentimentPanel({ items }: Props) {
       }, { positive: 0, neutral: 0, negative: 0, total: 0 })
     : MOCK;
 
-  const d = items.length > 0 ? (agg.total || 1) : 1;
-  const pos = Math.round((agg.positive / d) * 100);
-  const neu = Math.round((agg.neutral  / d) * 100);
-  const neg = Math.round((agg.negative / d) * 100);
-  const label = pos > 55 ? "Bullish" : neg > 40 ? "Bearish" : "Mixed";
-  const labelColor = pos > 55 ? "var(--green)" : neg > 40 ? "var(--red)" : "var(--yellow)";
-
   const isDemo = items.length === 0;
+  // Articles loaded but none have AI sentiment yet — pipeline is still processing or unavailable
+  const isPending = !isDemo && agg.total === 0;
+
+  const d = (isDemo || !isPending) ? (agg.total || 1) : 1;
+  const pos = isPending ? 0 : Math.round((agg.positive / d) * 100);
+  const neu = isPending ? 0 : Math.round((agg.neutral  / d) * 100);
+  const neg = isPending ? 0 : Math.round((agg.negative / d) * 100);
+  const label = isPending ? "Pending" : pos > 55 ? "Bullish" : neg > 40 ? "Bearish" : "Mixed";
+  const labelColor = isPending
+    ? "var(--muted)"
+    : pos > 55 ? "var(--green)" : neg > 40 ? "var(--red)" : "var(--yellow)";
 
   return (
     <div>
       <h2 style={{ fontWeight: 600, fontSize: 13, color: "var(--fg)", marginBottom: 12, transition: "color 0.2s ease" }}>
-        Sentiment {isDemo && <span style={{ color: "var(--yellow)", fontSize: 11, fontWeight: 400, marginLeft: 6 }}>(Demo Data)</span>}
+        Sentiment
+        {isDemo && <span style={{ color: "var(--yellow)", fontSize: 11, fontWeight: 400, marginLeft: 6 }}>(Demo Data)</span>}
+        {isPending && <span style={{ color: "var(--muted)", fontSize: 11, fontWeight: 400, marginLeft: 6 }}>(AI tagging pending)</span>}
       </h2>
 
       <div style={{ marginBottom: 8 }}>
         <span style={{ fontWeight: 600, fontSize: 18, color: labelColor, transition: "color 0.2s ease" }}>{label}</span>
-        <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 8, transition: "color 0.2s ease" }}>{agg.total} articles</span>
+        <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 8, transition: "color 0.2s ease" }}>
+          {isPending ? `${items.length} untagged` : `${agg.total} articles`}
+        </span>
       </div>
 
       {/* Bar */}
