@@ -252,12 +252,17 @@ async def trigger_news_fetch(background_tasks: BackgroundTasks):
 def get_news(response: Response, db: Session = Depends(get_db), skip: int = 0, limit: int = 50):
     """Return latest news items from the database."""
     from crawlers.agent import archive_old_news
+    from sqlalchemy import func
     archive_old_news(db)
+
+    # COALESCE so items missing a real publish time still sort sensibly by
+    # when we first saw them — and never sort to the bottom in a NULL pile.
+    effective_time = func.coalesce(models.News.published_at, models.News.created_at)
 
     news = (
         db.query(models.News)
         .filter(models.News.is_archived == False)
-        .order_by(models.News.published_at.desc())
+        .order_by(effective_time.desc())
         .offset(skip)
         .limit(limit)
         .all()
@@ -269,7 +274,7 @@ def get_news(response: Response, db: Session = Depends(get_db), skip: int = 0, l
             "headline": n.headline,
             "url": n.url,
             "source_id": n.source_id,
-            "published_at": n.published_at.isoformat() if n.published_at else None,
+            "published_at": (n.published_at or n.created_at).isoformat() if (n.published_at or n.created_at) else None,
         }
         for n in news
     ]
@@ -293,7 +298,10 @@ async def analyse_news():
 def get_insights(response: Response, db: Session = Depends(get_db), limit: int = 30):
     """Return news articles with their AI summaries, sentiment scores, and source details."""
     from crawlers.agent import archive_old_news
+    from sqlalchemy import func
     archive_old_news(db)
+
+    effective_time = func.coalesce(models.News.published_at, models.News.created_at)
 
     rows = (
         db.query(models.News, models.Source, models.Summary, models.SentimentScore)
@@ -301,7 +309,7 @@ def get_insights(response: Response, db: Session = Depends(get_db), limit: int =
         .outerjoin(models.Summary, models.Summary.news_id == models.News.id)
         .outerjoin(models.SentimentScore, models.SentimentScore.news_id == models.News.id)
         .filter(models.News.is_archived == False)
-        .order_by(models.News.published_at.desc())
+        .order_by(effective_time.desc())
         .limit(limit)
         .all()
     )
@@ -313,7 +321,7 @@ def get_insights(response: Response, db: Session = Depends(get_db), limit: int =
             "url": news.url,                          # exact article URL from crawler
             "source": source.name if source else None,
             "source_url": source.url if source else None,
-            "published_at": news.published_at.isoformat() if news.published_at else None,
+            "published_at": (news.published_at or news.created_at).isoformat() if (news.published_at or news.created_at) else None,
             "summary": summary.ai_summary if summary else None,
             "sentiment": {
                 "positive": sentiment.positive if sentiment else 0,

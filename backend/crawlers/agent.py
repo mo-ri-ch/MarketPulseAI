@@ -4,6 +4,7 @@ de-duplicates results, enriches with tickers, and saves to the database.
 """
 import asyncio
 import logging
+import re
 import time
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -25,6 +26,41 @@ logger = logging.getLogger(__name__)
 
 LAST_CRAWLER_STATS: dict[str, dict] = {}
 LAST_PIPELINE_STATUS: dict = {"ok": None, "ran_at": None, "error": None}
+
+
+# Common non-article strings that listing pages spit out (nav links, section
+# titles, author bylines). Matched case-insensitively against the full headline.
+_HEADLINE_DENYLIST = {
+    "news", "newsletters", "newsletter", "science", "world", "markets",
+    "business", "economy", "politics", "sports", "more", "home", "videos",
+    "podcasts", "videos", "opinion", "editorial", "tech", "technology",
+    "stocks", "stock market", "personal finance", "mutual funds",
+    "ipo", "ipos", "commodities", "currencies", "subscribe", "log in",
+    "sign in", "sign up", "advertisement", "explore",
+}
+
+# Heuristic: an article headline almost always has 4+ words and 25+ chars.
+_MIN_HEADLINE_CHARS = 25
+_MIN_HEADLINE_WORDS = 4
+
+
+def is_valid_headline(text: str) -> bool:
+    """
+    Reject obvious non-articles: navigation labels, author bylines, section
+    titles. Conservative — we'd rather drop a real headline than display
+    "Newsletters" or "Prateek Agarwal" on the dashboard.
+    """
+    if not text:
+        return False
+    cleaned = text.strip()
+    if cleaned.lower() in _HEADLINE_DENYLIST:
+        return False
+    if len(cleaned) < _MIN_HEADLINE_CHARS:
+        return False
+    words = re.findall(r"\S+", cleaned)
+    if len(words) < _MIN_HEADLINE_WORDS:
+        return False
+    return True
 
 ALL_CRAWLERS = [
     NSEIndiaCrawler(),
@@ -111,13 +147,22 @@ def get_or_create_source(db: Session, source_name: str, source_url: str, rank: i
 def save_news_items(items: list[NewsItem]) -> int:
     """
     Persist scraped news items to the database.
-    Skips already-existing URLs to prevent duplicates.
+    Skips already-existing URLs and quality-filters headlines so navigation
+    labels / author bylines don't end up on the dashboard. Leaves
+    published_at NULL when the crawler couldn't extract a real timestamp
+    (the read endpoints sort by COALESCE(published_at, created_at) so items
+    still order sensibly).
     Returns count of newly saved items.
     """
     db: Session = SessionLocal()
     saved = 0
+    skipped_quality = 0
     try:
         for item in items:
+            if not is_valid_headline(item.headline):
+                skipped_quality += 1
+                continue
+
             # Skip if URL already exists
             existing = db.query(models.News).filter(models.News.url == item.url).first()
             if existing:
@@ -128,13 +173,16 @@ def save_news_items(items: list[NewsItem]) -> int:
                 headline=item.headline,
                 url=item.url,
                 source_id=source.id,
-                published_at=item.published_at or datetime.utcnow(),
+                published_at=item.published_at,
             )
             db.add(news)
             saved += 1
 
         db.commit()
-        logger.info(f"[Agent] Saved {saved} new news items to database.")
+        logger.info(
+            f"[Agent] Saved {saved} new news items to database "
+            f"(rejected {skipped_quality} low-quality headlines)."
+        )
     except Exception as e:
         db.rollback()
         logger.error(f"[Agent] DB save error: {e}")
