@@ -1,5 +1,7 @@
-from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks, Response
+from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+import traceback
 from contextlib import asynccontextmanager
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
@@ -113,6 +115,25 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """
+    Return JSON (not plain text) for unhandled exceptions so the browser
+    receives a CORS-decorated response instead of a raw 500 it can't read.
+    Without this, axios just sees "Network Error" / no response.
+    """
+    import logging
+    logging.getLogger(__name__).error(
+        f"[Unhandled] {request.method} {request.url.path}: {type(exc).__name__}: {exc}\n"
+        f"{traceback.format_exc()}"
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"{type(exc).__name__}: {str(exc)}"},
+    )
+
 
 app.include_router(watchlist_router, tags=["watchlists"])
 
