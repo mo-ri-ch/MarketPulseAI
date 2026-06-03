@@ -30,7 +30,23 @@ export default function LoginPage() {
         setIsLogin(true);
       }
     } catch (err: any) {
-      setMessage(err.response?.data?.detail || "An error occurred. Please try again.");
+      // Surface the real cause so the user can tell exactly what failed.
+      let msg: string;
+      if (err.response) {
+        // Backend responded with a non-2xx
+        const detail = err.response.data?.detail;
+        msg = detail
+          ? (typeof detail === "string" ? detail : JSON.stringify(detail))
+          : `Server returned ${err.response.status} ${err.response.statusText || ""}`.trim();
+      } else if (err.request) {
+        // Request was sent but no response received (CORS / cold start / wrong URL / offline)
+        msg = `Cannot reach API at ${API}. Backend may be cold-starting, blocked by CORS, or NEXT_PUBLIC_API_URL is unset.`;
+      } else {
+        msg = err.message || "Unexpected error";
+      }
+      setMessage(msg);
+      // Also log full details for devtools inspection
+      console.error("[auth]", { API, err });
     } finally {
       setLoading(false);
     }
