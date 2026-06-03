@@ -144,6 +144,7 @@ def read_root():
 @app.get("/health")
 def health_check():
     from crawlers.agent import LAST_CRAWLER_STATS, LAST_PIPELINE_STATUS
+    from database import engine
     now = datetime.utcnow()
     seconds_since_crawl = (now - _last_crawl_at).total_seconds() if _last_crawl_at else None
     ok_count = sum(1 for s in LAST_CRAWLER_STATS.values() if s.get("ok"))
@@ -157,6 +158,8 @@ def health_check():
         "scheduler_appears_stalled": seconds_since_crawl is not None and seconds_since_crawl > 900,
         "crawlers_succeeding": f"{ok_count}/{total_count}" if total_count else "no crawl yet",
         "ai_pipeline": LAST_PIPELINE_STATUS,
+        "db_driver": engine.url.drivername,
+        "db_persistent": not engine.url.drivername.startswith("sqlite"),
         "env_present": {
             "GEMINI_API_KEY": bool(os.getenv("GEMINI_API_KEY")),
             "DATABASE_URL": bool(os.getenv("DATABASE_URL")),
