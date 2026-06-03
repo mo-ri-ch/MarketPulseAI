@@ -29,9 +29,13 @@ def extract_tickers(text: str) -> list[str]:
 def extract_timestamp(date_str: str):
     """
     Try parsing common date formats found in Indian financial news sites.
-    Returns a datetime object or None.
+    Returns a naive UTC datetime, or None. Any timezone info in the source
+    string is honored (converted to UTC) before the tz is dropped — so
+    "+0530" (IST) and "+0000" (GMT) inputs both end up correctly anchored
+    to the same instant on the universal clock. Callers can rely on every
+    timestamp meaning "wall-clock UTC".
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     FORMATS = [
         "%b %d, %Y, %I:%M %p",     # May 24, 2026, 10:30 AM
@@ -54,8 +58,14 @@ def extract_timestamp(date_str: str):
     for fmt in FORMATS:
         try:
             dt = datetime.strptime(date_str, fmt)
-            # Strip tz so naive comparisons in callers don't trip
-            return dt.replace(tzinfo=None) if dt.tzinfo else dt
+            if dt.tzinfo is not None:
+                # Convert to UTC first, THEN drop tz. Without the conversion,
+                # an IST "19:30 +0530" gets stored as naive 19:30 (a clock
+                # value), and the frontend mis-reads it as another 5.5 hours
+                # off — producing "future" article times like the
+                # "-19127s ago" bug.
+                dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+            return dt
         except ValueError:
             continue
 

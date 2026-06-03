@@ -34,6 +34,22 @@ if SENTRY_DSN:
 _last_crawl_at: datetime | None = None
 
 
+def _iso_utc(dt) -> str | None:
+    """
+    Serialize a datetime as an ISO string the frontend will parse as UTC.
+    All persisted timestamps in this app are naive-UTC by convention
+    (extract_timestamp normalizes to UTC, fallback uses utcnow). Append a
+    'Z' so JavaScript's Date constructor doesn't reinterpret the value as
+    the user's local timezone, which was producing negative "ago" values.
+    """
+    if dt is None:
+        return None
+    if getattr(dt, "tzinfo", None) is not None:
+        # Already timezone-aware — let isoformat add the offset.
+        return dt.isoformat()
+    return dt.isoformat() + "Z"
+
+
 async def _cron_crawler_loop():
     """Background task: crawls all sources every 10 minutes."""
     import logging
@@ -203,7 +219,7 @@ def debug_db_details(db: Session = Depends(get_db)):
                 "headline": n.headline,
                 "url": n.url,
                 "source_id": n.source_id,
-                "published_at": n.published_at.isoformat() if n.published_at else None,
+                "published_at": _iso_utc(n.published_at),
                 "is_archived": n.is_archived
             }
             for n in news_items
@@ -274,7 +290,7 @@ def get_news(response: Response, db: Session = Depends(get_db), skip: int = 0, l
             "headline": n.headline,
             "url": n.url,
             "source_id": n.source_id,
-            "published_at": (n.published_at or n.created_at).isoformat() if (n.published_at or n.created_at) else None,
+            "published_at": _iso_utc(n.published_at or n.created_at),
         }
         for n in news
     ]
@@ -321,7 +337,7 @@ def get_insights(response: Response, db: Session = Depends(get_db), limit: int =
             "url": news.url,                          # exact article URL from crawler
             "source": source.name if source else None,
             "source_url": source.url if source else None,
-            "published_at": (news.published_at or news.created_at).isoformat() if (news.published_at or news.created_at) else None,
+            "published_at": _iso_utc(news.published_at or news.created_at),
             "summary": summary.ai_summary if summary else None,
             "sentiment": {
                 "positive": sentiment.positive if sentiment else 0,
@@ -504,7 +520,7 @@ async def get_stock_analysis(query: str, db: Session = Depends(get_db)):
             "url": news.url,
             "source": source.name if source else "Unknown",
             "source_url": source.url if source else None,
-            "published_at": news.published_at.isoformat() if news.published_at else None,
+            "published_at": _iso_utc(news.published_at),
             "summary": summary.ai_summary if summary else None,
             "sentiment": sent_dict
         })
