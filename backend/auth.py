@@ -1,9 +1,9 @@
 from datetime import datetime, timedelta
 from typing import Optional
+import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 import os
 from dotenv import load_dotenv
@@ -17,14 +17,24 @@ ALGORITHM = os.getenv("ALGORITHM", "HS256")
 # Default to 30 days so users stay logged in across sessions
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", str(60 * 24 * 30)))
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login", auto_error=True)
 
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
+# bcrypt has a hard 72-byte limit on the input. We truncate UTF-8 bytes so
+# users with very long passwords still get a deterministic hash instead of
+# the ValueError raised by bcrypt 4.1+.
+def _prep(password: str) -> bytes:
+    return password.encode("utf-8")[:72]
 
-def get_password_hash(password):
-    return pwd_context.hash(password)
+def verify_password(plain_password: str, hashed_password: Optional[str]) -> bool:
+    if not hashed_password:
+        return False
+    try:
+        return bcrypt.checkpw(_prep(plain_password), hashed_password.encode("utf-8"))
+    except ValueError:
+        return False
+
+def get_password_hash(password: str) -> str:
+    return bcrypt.hashpw(_prep(password), bcrypt.gensalt()).decode("utf-8")
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
