@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(python -c \"import ast; ast.parse\\(open\\('backend/auth.py'\\).read\\(\\)\\); print\\('python OK'\\)\")"
-    ]
-  }
-}
