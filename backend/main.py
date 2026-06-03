@@ -1,8 +1,11 @@
 from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
+import asyncio
 import os
+from datetime import datetime
 
 # Set up centralized logging before importing local modules
 from logger_config import setup_logging
@@ -25,36 +28,37 @@ if SENTRY_DSN:
         send_default_pii=True
     )
 
-app = FastAPI(title="Market Pulse AI Backend")
+# Track last successful crawl time for /health endpoint
+_last_crawl_at: datetime | None = None
 
-async def cron_crawler_loop():
-    """Background task that runs 24/7 to fetch news every 15 minutes."""
+
+async def _cron_crawler_loop():
+    """Background task: crawls all sources every 10 minutes."""
     import logging
+    global _last_crawl_at
     logger = logging.getLogger(__name__)
-    logger.info("[Scheduler] Starting 24/7 crawler loop...")
+    logger.info("[Scheduler] 24/7 crawler loop started.")
     while True:
         try:
             logger.info("[Scheduler] Triggering scheduled news crawl...")
             await fetch_and_save()
+            _last_crawl_at = datetime.utcnow()
             logger.info("[Scheduler] Scheduled news crawl complete.")
         except Exception as e:
             logger.error(f"[Scheduler] Error in scheduled crawl: {e}")
-        # Wait 15 minutes (900 seconds)
-        await asyncio.sleep(900)
+        # Wait 10 minutes before next crawl
+        await asyncio.sleep(600)
 
 
-@app.on_event("startup")
-def on_startup():
+def _run_startup_db_tasks():
+    """Synchronous DB setup: create tables, self-heal schema, add indexes."""
+    import logging
     from database import engine, Base
-    import models
+    from sqlalchemy import inspect, text
+
     Base.metadata.create_all(bind=engine)
 
-    # Start 24/7 background scheduler loop
-    import asyncio
-    asyncio.create_task(cron_crawler_loop())
-
-    # Self-healing migration to add is_archived column if it doesn't exist
-    from sqlalchemy import inspect, text
+    # Self-healing migration: ensure is_archived column exists
     inspector = inspect(engine)
     try:
         columns = [c["name"] for c in inspector.get_columns("news")]
@@ -65,21 +69,36 @@ def on_startup():
                     conn.execute(text("ALTER TABLE news ADD COLUMN is_archived BOOLEAN DEFAULT FALSE NOT NULL"))
                 else:
                     conn.execute(text("ALTER TABLE news ADD COLUMN is_archived BOOLEAN DEFAULT 0 NOT NULL"))
-            import logging
             logging.getLogger(__name__).info("[Startup] Added is_archived column to news table.")
     except Exception as e:
-        import logging
         logging.getLogger(__name__).warning(f"[Startup] Migration check failed: {e}")
 
-    # Optimize news query performance by indexing published_at
+    # Ensure index on published_at for query performance
     try:
         with engine.begin() as conn:
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_news_published_at ON news (published_at)"))
-            import logging
-            logging.getLogger(__name__).info("[Startup] Verified index on news (published_at).")
+        logging.getLogger(__name__).info("[Startup] Verified index on news (published_at).")
     except Exception as e:
-        import logging
         logging.getLogger(__name__).warning(f"[Startup] Index creation failed: {e}")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Async lifespan handler — runs in the event loop so create_task works correctly."""
+    # Synchronous DB setup (safe to call from async context)
+    _run_startup_db_tasks()
+    # Kick off the 24/7 crawler loop as a proper async background task
+    task = asyncio.create_task(_cron_crawler_loop())
+    yield
+    # Graceful shutdown: cancel the crawler loop
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
+app = FastAPI(title="Market Pulse AI Backend", lifespan=lifespan)
 
 
 
@@ -100,6 +119,14 @@ app.include_router(watchlist_router, tags=["watchlists"])
 @app.get("/")
 def read_root():
     return {"message": "Market Pulse AI API is running"}
+
+@app.get("/health")
+def health_check():
+    return {
+        "status": "ok",
+        "last_crawl_at": _last_crawl_at.isoformat() if _last_crawl_at else None,
+        "crawl_interval_minutes": 10,
+    }
 
 @app.get("/debug/db-details")
 def debug_db_details(db: Session = Depends(get_db)):
