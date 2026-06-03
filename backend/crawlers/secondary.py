@@ -8,36 +8,76 @@ Secondary & Community Source Connectors:
   - CNBC TV18
   - Reddit (r/IndianStockMarket)
 """
+from urllib.parse import quote_plus
 from crawlers.base import BaseCrawler, NewsItem
 from crawlers.extractor import extract_tickers, extract_timestamp
+
+
+async def scrape_via_google_news(crawler: BaseCrawler, query: str, limit: int = 25) -> list[NewsItem]:
+    """
+    Shared helper: pull a Google News RSS search result and convert to
+    NewsItems. Used by sources whose own HTML or RSS endpoints either
+    block cloud IPs (Reuters, Business Standard) or no longer expose a
+    parseable structure (TradingView, Motilal Oswal). Google News indexes
+    those publishers reliably and provides real pubDates, so timestamps
+    are honest.
+
+    `query` is the raw Google News query (URL-encoded internally), e.g.
+    'site:reuters.com india markets'. The crawler's source_name is stamped
+    on each item so badges remain branded as Reuters / BS / etc. rather
+    than "Google News".
+    """
+    try:
+        import xml.etree.ElementTree as ET
+        url = (
+            "https://news.google.com/rss/search?q="
+            f"{quote_plus(query)}&hl=en-IN&gl=IN&ceid=IN:en"
+        )
+        xml_text = await crawler.fetch_html(url)
+        if not xml_text:
+            return []
+
+        root = ET.fromstring(xml_text.encode("utf-8"))
+        items: list[NewsItem] = []
+        for item in root.findall(".//item")[:limit]:
+            title_el = item.find("title")
+            title = title_el.text if title_el is not None else ""
+            if not title:
+                continue
+            # Google News appends " - Publisher" to titles. Strip it.
+            headline = title.rsplit(" - ", 1)[0] if " - " in title else title
+
+            link_el = item.find("link")
+            link = link_el.text if link_el is not None else ""
+            if not link:
+                continue
+
+            pub_date_el = item.find("pubDate")
+            pub_date_str = pub_date_el.text if pub_date_el is not None else ""
+            published_at = extract_timestamp(pub_date_str) if pub_date_str else None
+
+            news_item = crawler.to_news_item(headline.strip(), link.strip(), published_at=published_at)
+            news_item.tickers = extract_tickers(headline)
+            items.append(news_item)
+        return items
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"[{crawler.source_name}] Google News scrape failed: {e}")
+        return []
 
 
 # ---------- Secondary Sources ----------
 
 class ReutersCrawler(BaseCrawler):
+    """Reuters blocks direct scrapes from cloud IPs (403), so we route
+    through Google News with a site filter. Yields real Reuters URLs and
+    real pubDates."""
     source_name = "Reuters"
     source_url = "https://www.reuters.com/markets/"
     source_rank = 3
 
     async def scrape(self) -> list[NewsItem]:
-        html = await self.fetch_html(self.source_url)
-        if not html:
-            return []
-        soup = self.parse(html)
-        items = []
-
-        for tag in soup.select("a[data-testid='Heading'], h3 a, .story-title a")[:20]:
-            headline = tag.get_text(strip=True)
-            url = tag.get("href", "")
-            if not headline or not url:
-                continue
-            if url.startswith("/"):
-                url = "https://www.reuters.com" + url
-            item = self.to_news_item(headline, url)
-            item.tickers = extract_tickers(headline)
-            items.append(item)
-
-        return items
+        return await scrape_via_google_news(self, "site:reuters.com india markets")
 
 
 class YahooFinanceCrawler(BaseCrawler):
@@ -119,92 +159,94 @@ class LiveMintCrawler(BaseCrawler):
 
 
 class BusinessStandardCrawler(BaseCrawler):
+    """BS RSS endpoints return 403 to cloud IPs and the markets page
+    requires JS, so route through Google News with a site filter."""
     source_name = "Business Standard"
     source_url = "https://www.business-standard.com/markets"
     source_rank = 6
 
     async def scrape(self) -> list[NewsItem]:
-        html = await self.fetch_html(self.source_url)
-        if not html:
-            return []
-        soup = self.parse(html)
-        items = []
-
-        for tag in soup.select(".listingstory h2 a, .card-title a, h2 a, h3 a")[:20]:
-            headline = tag.get_text(strip=True)
-            url = tag.get("href", "")
-            if not headline or not url:
-                continue
-            if url.startswith("/"):
-                url = "https://www.business-standard.com" + url
-            item = self.to_news_item(headline, url)
-            item.tickers = extract_tickers(headline)
-            items.append(item)
-
-        return items
+        return await scrape_via_google_news(self, "site:business-standard.com markets")
 
 
 class CNBCTv18Crawler(BaseCrawler):
+    """CNBC TV18 exposes a proper RSS feed with ~200 fresh market items
+    and real pubDates — far better than scraping the JS-rendered page."""
     source_name = "CNBC TV18"
-    source_url = "https://www.cnbctv18.com/market/"
-    source_rank = 6
+    source_url = "https://www.cnbctv18.com/commonfeeds/v1/cne/rss/market.xml"
+    source_rank = 4
 
     async def scrape(self) -> list[NewsItem]:
-        html = await self.fetch_html(self.source_url)
-        if not html:
+        try:
+            import xml.etree.ElementTree as ET
+            xml_text = await self.fetch_html(self.source_url)
+            if not xml_text:
+                return []
+            root = ET.fromstring(xml_text.encode("utf-8"))
+            items: list[NewsItem] = []
+            for item in root.findall(".//item")[:25]:
+                title_el = item.find("title")
+                title = title_el.text if title_el is not None else ""
+                if not title:
+                    continue
+                link_el = item.find("link")
+                link = link_el.text if link_el is not None else ""
+                if not link:
+                    continue
+                pub_date_el = item.find("pubDate")
+                pub_date_str = pub_date_el.text if pub_date_el is not None else ""
+                published_at = extract_timestamp(pub_date_str) if pub_date_str else None
+                news_item = self.to_news_item(title.strip(), link.strip(), published_at=published_at)
+                news_item.tickers = extract_tickers(title)
+                items.append(news_item)
+            return items
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"[CNBC TV18] RSS scrape failed: {e}")
             return []
-        soup = self.parse(html)
-        items = []
-
-        for tag in soup.select(".news-box h3 a, .jsx-article-title a, h3 a, h2 a")[:20]:
-            headline = tag.get_text(strip=True)
-            url = tag.get("href", "")
-            if not headline or not url:
-                continue
-            if url.startswith("/"):
-                url = "https://www.cnbctv18.com" + url
-            item = self.to_news_item(headline, url)
-            item.tickers = extract_tickers(headline)
-            items.append(item)
-
-        return items
 
 
 # ---------- Community Sources ----------
 
 class RedditCrawler(BaseCrawler):
-    """Uses Reddit's public JSON API — no auth required for public subreddits."""
+    """Reddit's hot.json endpoint returns 403 to most cloud IPs now, but
+    the public Atom feed at /r/<sub>/.rss still works. Atom uses <entry>
+    rather than <item>, hence the namespaced findall below."""
     source_name = "Reddit"
-    source_url = "https://www.reddit.com/r/IndianStockMarket/hot.json?limit=25"
+    source_url = "https://www.reddit.com/r/IndianStockMarket/.rss"
     source_rank = 7
+
+    _ATOM_NS = {"atom": "http://www.w3.org/2005/Atom"}
 
     async def scrape(self) -> list[NewsItem]:
         try:
-            import httpx, json
-            headers = {**self.HEADERS, "Accept": "application/json"}
-            async with httpx.AsyncClient(headers=headers, timeout=15, follow_redirects=True) as client:
-                resp = await client.get(self.source_url)
-                resp.raise_for_status()
-                data = resp.json()
+            import xml.etree.ElementTree as ET
+            xml_text = await self.fetch_html(self.source_url)
+            if not xml_text:
+                return []
+            root = ET.fromstring(xml_text.encode("utf-8"))
+            items: list[NewsItem] = []
+            for entry in root.findall("atom:entry", self._ATOM_NS)[:25]:
+                title_el = entry.find("atom:title", self._ATOM_NS)
+                title = title_el.text if title_el is not None else ""
+                if not title:
+                    continue
+                link_el = entry.find("atom:link", self._ATOM_NS)
+                link = link_el.get("href") if link_el is not None else ""
+                if not link:
+                    continue
+                # Atom uses <updated> not <pubDate>
+                updated_el = entry.find("atom:updated", self._ATOM_NS)
+                pub_str = updated_el.text if updated_el is not None else ""
+                published_at = extract_timestamp(pub_str) if pub_str else None
+                news_item = self.to_news_item(title.strip(), link.strip(), published_at=published_at)
+                news_item.tickers = extract_tickers(title)
+                items.append(news_item)
+            return items
         except Exception as e:
             import logging
-            logging.getLogger(__name__).warning(f"[Reddit] API call failed: {e}")
+            logging.getLogger(__name__).warning(f"[Reddit] Atom feed scrape failed: {e}")
             return []
-
-        items = []
-        posts = data.get("data", {}).get("children", [])
-        for post in posts:
-            d = post.get("data", {})
-            headline = d.get("title", "")
-            url = d.get("url", "")
-            permalink = "https://www.reddit.com" + d.get("permalink", "")
-            if not headline:
-                continue
-            item = self.to_news_item(headline, permalink)
-            item.tickers = extract_tickers(headline)
-            items.append(item)
-
-        return items
 
 
 class GoogleNewsRSSCrawler(BaseCrawler):

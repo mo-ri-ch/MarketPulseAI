@@ -11,8 +11,7 @@ from sqlalchemy.orm import Session
 
 from crawlers.base import NewsItem
 from crawlers.primary import (
-    MoneycontrolCrawler, TradingViewCrawler, NSEIndiaCrawler,
-    MotilaOswalCrawler,
+    TradingViewCrawler, NSEIndiaCrawler, MotilaOswalCrawler,
 )
 from crawlers.secondary import (
     ReutersCrawler, YahooFinanceCrawler, EconomicTimesCrawler,
@@ -65,7 +64,6 @@ def is_valid_headline(text: str) -> bool:
 
 ALL_CRAWLERS = [
     NSEIndiaCrawler(),
-    MoneycontrolCrawler(),
     ReutersCrawler(),
     TradingViewCrawler(),
     MotilaOswalCrawler(),

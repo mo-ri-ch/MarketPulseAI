@@ -1,66 +1,28 @@
 """
 Primary Source Connectors:
-  - Moneycontrol
   - TradingView
   - NSE India
   - Motilal Oswal
+
+Note: the old direct Moneycontrol HTML crawler was removed because the
+Moneycontrol RSS crawler in secondary.py already yields the same content
+(~25 items per run) more reliably.
 """
-import re
 from crawlers.base import BaseCrawler, NewsItem
-from crawlers.extractor import extract_tickers, extract_timestamp
-
-
-class MoneycontrolCrawler(BaseCrawler):
-    source_name = "Moneycontrol"
-    source_url = "https://www.moneycontrol.com/news/business/markets/"
-    source_rank = 2
-
-    async def scrape(self) -> list[NewsItem]:
-        html = await self.fetch_html(self.source_url)
-        if not html:
-            return []
-        soup = self.parse(html)
-        items = []
-
-        # Moneycontrol news list items
-        for tag in soup.select("li.clearfix h2 a, .news_list li a[href*='/news/']")[:20]:
-            headline = tag.get_text(strip=True)
-            url = tag.get("href", "")
-            if not headline or not url:
-                continue
-            if not url.startswith("http"):
-                url = "https://www.moneycontrol.com" + url
-            item = self.to_news_item(headline, url)
-            item.tickers = extract_tickers(headline)
-            items.append(item)
-
-        return items
+from crawlers.extractor import extract_tickers
+from crawlers.secondary import scrape_via_google_news
 
 
 class TradingViewCrawler(BaseCrawler):
+    """TradingView's /news pages are heavily JS-rendered and return no
+    parseable headlines via static HTML scrape. Route through Google
+    News with a site filter instead."""
     source_name = "TradingView"
     source_url = "https://www.tradingview.com/news/"
     source_rank = 4
 
     async def scrape(self) -> list[NewsItem]:
-        html = await self.fetch_html(self.source_url)
-        if not html:
-            return []
-        soup = self.parse(html)
-        items = []
-
-        for tag in soup.select("a.news-story__title, article a[href*='/news/']")[:20]:
-            headline = tag.get_text(strip=True)
-            url = tag.get("href", "")
-            if not headline or not url:
-                continue
-            if url.startswith("/"):
-                url = "https://www.tradingview.com" + url
-            item = self.to_news_item(headline, url)
-            item.tickers = extract_tickers(headline)
-            items.append(item)
-
-        return items
+        return await scrape_via_google_news(self, "site:tradingview.com india")
 
 
 class NSEIndiaCrawler(BaseCrawler):
@@ -99,26 +61,12 @@ class NSEIndiaCrawler(BaseCrawler):
 
 
 class MotilaOswalCrawler(BaseCrawler):
+    """Motilal Oswal's blog RSS endpoint 301s into nothing and the page
+    itself is JS-rendered. Pull coverage via Google News matching the
+    research-house name in headlines."""
     source_name = "Motilal Oswal"
     source_url = "https://www.motilaloswal.com/blog/stock-market-news/"
     source_rank = 5
 
     async def scrape(self) -> list[NewsItem]:
-        html = await self.fetch_html(self.source_url)
-        if not html:
-            return []
-        soup = self.parse(html)
-        items = []
-
-        for tag in soup.select(".blog-card h3 a, .article-title a, h2 a, h3 a")[:20]:
-            headline = tag.get_text(strip=True)
-            url = tag.get("href", "")
-            if not headline or not url:
-                continue
-            if url.startswith("/"):
-                url = "https://www.motilaloswal.com" + url
-            item = self.to_news_item(headline, url)
-            item.tickers = extract_tickers(headline)
-            items.append(item)
-
-        return items
+        return await scrape_via_google_news(self, '"motilal oswal" stock india')

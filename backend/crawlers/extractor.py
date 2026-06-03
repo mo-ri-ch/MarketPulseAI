@@ -37,6 +37,7 @@ def extract_timestamp(date_str: str):
         "%b %d, %Y, %I:%M %p",     # May 24, 2026, 10:30 AM
         "%Y-%m-%dT%H:%M:%S",        # ISO format
         "%Y-%m-%dT%H:%M:%SZ",
+        "%Y-%m-%dT%H:%M:%S%z",      # ISO with offset, e.g. 2026-06-03T13:45:00+00:00 (Reddit Atom)
         "%d %b %Y %I:%M %p",        # 24 May 2026 10:30 AM
         "%d/%m/%Y %H:%M",           # 24/05/2026 10:30
         "%Y-%m-%d",
@@ -52,7 +53,9 @@ def extract_timestamp(date_str: str):
     date_str = date_str.strip()
     for fmt in FORMATS:
         try:
-            return datetime.strptime(date_str, fmt)
+            dt = datetime.strptime(date_str, fmt)
+            # Strip tz so naive comparisons in callers don't trip
+            return dt.replace(tzinfo=None) if dt.tzinfo else dt
         except ValueError:
             continue
 
