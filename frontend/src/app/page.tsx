@@ -8,7 +8,7 @@ import BreakingNews from "@/components/BreakingNews";
 import AISummaryPanel from "@/components/AISummaryPanel";
 import SentimentPanel from "@/components/SentimentPanel";
 import AlertsPanel from "@/components/AlertsPanel";
-import StockAnalysisModal from "@/components/StockAnalysisModal";
+import StockAnalysisView from "@/components/StockAnalysisView";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -102,10 +102,16 @@ export default function Dashboard() {
           <WatchlistPanel onSelectStock={setSelectedStock} />
         </aside>
 
-        {/* Center: News + AI Summaries */}
+        {/* Center: Stock view OR all news + AI summaries */}
         <section style={{ display: "flex", flexDirection: "column", gap: 36 }}>
-          <BreakingNews items={insights} loading={loading} newCount={newCount} onDismissNew={dismissNewBanner} />
-          <AISummaryPanel items={insights} />
+          {selectedStock ? (
+            <StockAnalysisView ticker={selectedStock} onBack={() => setSelectedStock(null)} />
+          ) : (
+            <>
+              <BreakingNews items={insights} loading={loading} newCount={newCount} onDismissNew={dismissNewBanner} />
+              <AISummaryPanel items={insights} />
+            </>
+          )}
         </section>
 
         {/* Right: Sentiment + Alerts */}
@@ -114,10 +120,6 @@ export default function Dashboard() {
           <AlertsPanel />
         </aside>
       </main>
-
-      {selectedStock && (
-        <StockAnalysisModal ticker={selectedStock} onClose={() => setSelectedStock(null)} />
-      )}
     </div>
   );
 }
