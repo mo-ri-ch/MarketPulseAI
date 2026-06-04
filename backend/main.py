@@ -453,6 +453,56 @@ async def market_quotes(tickers: str, response: Response):
     return snapshot
 
 
+# ── Per-stock intraday chart ─────────────────────────────────────────────────
+
+_CHART_CACHE: dict[str, dict] = {}
+_CHART_TTL = 1.5
+
+
+@app.get("/market/chart")
+async def market_chart(ticker: str, response: Response):
+    """
+    Intraday 1-min chart for a single NSE stock — same shape as one entry
+    in /market/indices (value, change, change_pct, spark, spark_ts). Used
+    by the stock analysis page to render a real-time price chart for the
+    selected ticker.
+    """
+    import time
+    import httpx
+
+    sym = ticker.strip().upper()
+    if not sym:
+        return {"as_of": datetime.utcnow().isoformat() + "Z", "chart": None}
+
+    now = time.time()
+    cached = _CHART_CACHE.get(sym)
+    if cached and (now - cached["at"]) < _CHART_TTL:
+        response.headers["Cache-Control"] = "no-store"
+        return cached["data"]
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": "application/json,text/plain,*/*",
+    }
+    async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
+        # Reuse the index fetcher — it already produces the exact shape we want
+        # (spark + spark_ts + meta-derived price/change). Yahoo's NSE listings
+        # live under the .NS suffix.
+        result = await _fetch_index(client, sym, _yahoo_symbol(sym), 2)
+
+    snapshot = {
+        "as_of": datetime.utcnow().isoformat() + "Z",
+        "chart": result,  # None if Yahoo couldn't resolve the symbol
+    }
+    _CHART_CACHE[sym] = {"at": now, "data": snapshot}
+    response.headers["Cache-Control"] = "no-store"
+    return snapshot
+
+
 @app.get("/debug/crawler-status")
 def debug_crawler_status():
     """Per-crawler success/failure from the most recent scheduled crawl."""

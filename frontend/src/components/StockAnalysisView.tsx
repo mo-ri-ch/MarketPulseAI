@@ -12,6 +12,7 @@ import {
   Loader2,
   Sparkles,
 } from "lucide-react";
+import StockChart from "@/components/StockChart";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -126,6 +127,13 @@ export default function StockAnalysisView({ ticker, onBack }: Props) {
           </div>
         </div>
       )}
+
+      {/* Live intraday chart — renders independently of the analysis fetch
+          so the price/spark is visible immediately even while Gemini is
+          still composing the prediction. */}
+      <div style={{ marginBottom: 16 }}>
+        <StockChart ticker={ticker} />
+      </div>
 
       {!loading && !error && data && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
