@@ -146,7 +146,7 @@ async def send_whatsapp_message(to: str, text: str) -> bool:
             return True
         else:
             logger.warning(
-                f"[WhatsApp] API returned {r.status_code}: {r.text[:200]}"
+                f"[WhatsApp] API returned {r.status_code} sending to {phone}: {r.text[:300]}"
             )
             return False
     except Exception as exc:
