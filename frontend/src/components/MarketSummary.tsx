@@ -87,6 +87,7 @@ function formatTime(unixSec: number): string {
   return new Date(unixSec * 1000).toLocaleTimeString("en-IN", {
     hour: "2-digit",
     minute: "2-digit",
+    second: "2-digit",
     hour12: false,
   });
 }
