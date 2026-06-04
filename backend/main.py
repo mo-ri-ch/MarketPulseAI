@@ -185,6 +185,146 @@ def health_check():
     }
 
 
+# ── Live Market Indices ──────────────────────────────────────────────────────
+
+# Yahoo Finance symbols for Indian market indices.
+# Display name → (yahoo symbol, decimal precision)
+_INDEX_SYMBOLS: list[tuple[str, str, int]] = [
+    ("NIFTY 50",   "^NSEI",      2),
+    ("SENSEX",     "^BSESN",     2),
+    ("BANK NIFTY", "^NSEBANK",   2),
+    ("NIFTY IT",   "^CNXIT",     2),
+    ("NIFTY MID",  "^NSEMDCP50", 2),
+    ("VIX",        "^INDIAVIX",  2),
+]
+
+# In-process cache so we don't hammer Yahoo when many tabs poll us at once.
+_INDICES_CACHE: dict = {"at": 0.0, "data": None}
+_INDICES_TTL = 8.0  # seconds
+
+
+async def _fetch_index(client, display_name: str, symbol: str, precision: int) -> dict | None:
+    """Fetch one index from Yahoo Finance v8 chart API. Returns None on failure."""
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+    params = {"interval": "5m", "range": "1d", "includePrePost": "false"}
+    try:
+        r = await client.get(url, params=params, timeout=8.0)
+        if r.status_code != 200:
+            return None
+        payload = r.json()
+        result = payload.get("chart", {}).get("result")
+        if not result:
+            return None
+        node = result[0]
+        meta = node.get("meta", {}) or {}
+        timestamps = node.get("timestamp") or []
+        quote = (node.get("indicators", {}) or {}).get("quote", [{}])[0] or {}
+        closes_raw = quote.get("close") or []
+
+        # Yahoo seeds nulls when no trade in a 5m bucket — forward-fill so the
+        # sparkline doesn't have gaps and the latest value is the most recent
+        # real print, not whatever the meta block claims.
+        spark: list[float] = []
+        last: float | None = None
+        for c in closes_raw:
+            if c is not None:
+                last = float(c)
+            if last is not None:
+                spark.append(round(last, precision))
+
+        current = (
+            meta.get("regularMarketPrice")
+            or (spark[-1] if spark else None)
+        )
+        prev_close = (
+            meta.get("chartPreviousClose")
+            or meta.get("previousClose")
+        )
+        if current is None or prev_close in (None, 0):
+            return None
+
+        current = float(current)
+        prev_close = float(prev_close)
+        change = current - prev_close
+        change_pct = (change / prev_close) * 100.0
+
+        # Downsample the sparkline to ~40 points so the SVG stays light.
+        if len(spark) > 40:
+            step = max(1, len(spark) // 40)
+            spark = spark[::step][-40:]
+
+        return {
+            "name": display_name,
+            "symbol": symbol,
+            "value": round(current, precision),
+            "prev_close": round(prev_close, precision),
+            "change": round(change, precision),
+            "change_pct": round(change_pct, 2),
+            "up": change >= 0,
+            "spark": spark,
+            "ts": (timestamps[-1] if timestamps else None),
+        }
+    except Exception:
+        return None
+
+
+@app.get("/market/indices")
+async def market_indices(response: Response):
+    """
+    Live Indian market indices snapshot for the header ticker.
+
+    Pulls NIFTY 50, SENSEX, BANK NIFTY, NIFTY IT, NIFTY MID, and India VIX
+    from Yahoo Finance's public chart API in parallel. Cached for a few
+    seconds to absorb burst polling.
+    """
+    import time
+    import httpx
+    import asyncio as _asyncio
+
+    now = time.time()
+    if _INDICES_CACHE["data"] is not None and (now - _INDICES_CACHE["at"]) < _INDICES_TTL:
+        response.headers["Cache-Control"] = "no-store"
+        return _INDICES_CACHE["data"]
+
+    headers = {
+        # Yahoo's chart endpoint 403s without a browser-ish UA.
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": "application/json,text/plain,*/*",
+    }
+    async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
+        results = await _asyncio.gather(
+            *[_fetch_index(client, name, sym, prec) for name, sym, prec in _INDEX_SYMBOLS]
+        )
+
+    indices = []
+    for spec, res in zip(_INDEX_SYMBOLS, results):
+        name, symbol, _ = spec
+        if res is not None:
+            indices.append(res)
+        elif _INDICES_CACHE["data"]:
+            # Fall back to the last known good value for this symbol so a
+            # single Yahoo hiccup doesn't blank out an index card.
+            stale = next(
+                (i for i in _INDICES_CACHE["data"]["indices"] if i["symbol"] == symbol),
+                None,
+            )
+            if stale:
+                indices.append({**stale, "stale": True})
+
+    snapshot = {
+        "as_of": datetime.utcnow().isoformat() + "Z",
+        "indices": indices,
+    }
+    _INDICES_CACHE["data"] = snapshot
+    _INDICES_CACHE["at"] = now
+    response.headers["Cache-Control"] = "no-store"
+    return snapshot
+
+
 @app.get("/debug/crawler-status")
 def debug_crawler_status():
     """Per-crawler success/failure from the most recent scheduled crawl."""
