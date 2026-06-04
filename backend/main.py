@@ -396,8 +396,12 @@ async def get_stock_analysis(query: str, db: Session = Depends(get_db)):
     now = datetime.utcnow()
     start_of_yesterday = now - timedelta(days=2)
 
-    # Dynamic live search to fetch recent news about the stock
-    search_query = f"{company_name} {ticker} stock"
+    # Dynamic live search to fetch recent news about the stock.
+    # Use the quoted company name + "share OR stock" so Google News returns
+    # company-specific articles (the NSE ticker is dropped — real headlines
+    # never include the ticker symbol, and including it cuts yield by half).
+    from urllib.parse import quote_plus
+    search_query = f'"{company_name}" share OR stock'
     try:
         from bs4 import BeautifulSoup
         import httpx
@@ -405,16 +409,19 @@ async def get_stock_analysis(query: str, db: Session = Depends(get_db)):
         from crawlers.extractor import extract_timestamp
         from crawlers.agent import save_news_items
         from ai.pipeline import run_full_pipeline
-        
-        rss_url = f"https://news.google.com/rss/search?q={search_query.replace(' ', '+')}&hl=en-IN&gl=IN&ceid=IN:en"
+
+        rss_url = (
+            "https://news.google.com/rss/search?q="
+            f"{quote_plus(search_query)}&hl=en-IN&gl=IN&ceid=IN:en"
+        )
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, htmllike Gecko) Chrome/124.0.0.0 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         }
         async with httpx.AsyncClient(headers=headers, timeout=12, follow_redirects=True) as client:
             r = await client.get(rss_url)
             if r.status_code == 200:
                 soup = BeautifulSoup(r.text, "xml")
-                rss_items = soup.find_all("item")[:15]
+                rss_items = soup.find_all("item")[:25]
                 news_items = []
                 for item in rss_items:
                     headline_full = item.title.text
@@ -468,7 +475,13 @@ async def get_stock_analysis(query: str, db: Session = Depends(get_db)):
 
     # 3. Query related news with sentiment & summaries
     from crawlers.agent import archive_old_news
+    from sqlalchemy import func
     archive_old_news(db)
+
+    # Use COALESCE so HTML-scraped items with NULL published_at still match
+    # the 2-day window (previously they were silently excluded — which is
+    # why TATASTEEL was returning 1 article instead of dozens).
+    effective_time = func.coalesce(models.News.published_at, models.News.created_at)
 
     rows = (
         db.query(models.News, models.Source, models.Summary, models.SentimentScore)
@@ -476,10 +489,9 @@ async def get_stock_analysis(query: str, db: Session = Depends(get_db)):
         .outerjoin(models.Summary, models.Summary.news_id == models.News.id)
         .outerjoin(models.SentimentScore, models.SentimentScore.news_id == models.News.id)
         .filter(or_(*conditions))
-        .filter(models.News.is_archived == False)
-        .filter(models.News.published_at >= start_of_yesterday)
-        .order_by(models.News.published_at.desc())
-        .limit(20)
+        .filter(effective_time >= start_of_yesterday)
+        .order_by(effective_time.desc())
+        .limit(30)
         .all()
     )
 
