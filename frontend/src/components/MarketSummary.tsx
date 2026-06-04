@@ -48,8 +48,10 @@ function formatChange(change: number): string {
   return `${sign}${change.toFixed(2)}`;
 }
 
-/** Build an SVG path string from a series of numbers, normalized into a box. */
-function buildSparkPath(values: number[], width: number, height: number, pad = 2): string {
+const SPARK_VB_W = 100;
+const SPARK_VB_H = 22;
+
+function buildSparkPath(values: number[], width = SPARK_VB_W, height = SPARK_VB_H, pad = 1.5): string {
   if (values.length < 2) return "";
   const min = Math.min(...values);
   const max = Math.max(...values);
@@ -65,7 +67,7 @@ function buildSparkPath(values: number[], width: number, height: number, pad = 2
     .join(" ");
 }
 
-function buildSparkArea(values: number[], width: number, height: number, pad = 2): string {
+function buildSparkArea(values: number[], width = SPARK_VB_W, height = SPARK_VB_H, pad = 1.5): string {
   if (values.length < 2) return "";
   const line = buildSparkPath(values, width, height, pad);
   return `${line} L${(width - pad).toFixed(2)},${(height - pad).toFixed(2)} L${pad.toFixed(2)},${(height - pad).toFixed(2)} Z`;
@@ -78,34 +80,43 @@ interface CardProps {
 
 function IndexCard({ idx, flash }: CardProps) {
   const color = idx.up ? "var(--green)" : "var(--red)";
-  const sparkW = 110;
-  const sparkH = 32;
   const gradientId = `spark-${idx.symbol.replace(/[^a-zA-Z0-9]/g, "")}`;
-  const linePath = buildSparkPath(idx.spark, sparkW, sparkH);
-  const areaPath = buildSparkArea(idx.spark, sparkW, sparkH);
+  const linePath = buildSparkPath(idx.spark);
+  const areaPath = buildSparkArea(idx.spark);
 
   return (
     <div
       style={{
-        flexShrink: 0,
-        minWidth: 168,
-        padding: "8px 14px 8px 14px",
-        borderRadius: 8,
+        // Equal-share width so all six cards fit the viewport without scrolling.
+        flex: "1 1 0",
+        minWidth: 0,
+        padding: "6px 10px",
+        borderRadius: 6,
         background:
           flash === "up"
-            ? "color-mix(in srgb, var(--green) 12%, transparent)"
+            ? "color-mix(in srgb, var(--green) 14%, transparent)"
             : flash === "down"
-            ? "color-mix(in srgb, var(--red) 12%, transparent)"
+            ? "color-mix(in srgb, var(--red) 14%, transparent)"
             : "transparent",
         transition: "background-color 400ms ease",
         display: "flex",
         flexDirection: "column",
-        gap: 2,
-        position: "relative",
+        gap: 1,
+        overflow: "hidden",
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-        <div style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.04em", fontWeight: 500 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
+        <div
+          style={{
+            fontSize: 10,
+            color: "var(--muted)",
+            letterSpacing: "0.04em",
+            fontWeight: 500,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
           {idx.name}
         </div>
         {idx.stale && (
@@ -115,41 +126,75 @@ function IndexCard({ idx, flash }: CardProps) {
         )}
       </div>
 
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ fontWeight: 600, fontSize: 15, fontVariantNumeric: "tabular-nums", letterSpacing: "-0.01em" }}>
-          {formatValue(idx.value)}
-        </div>
+      <div
+        style={{
+          fontWeight: 600,
+          fontSize: 14,
+          fontVariantNumeric: "tabular-nums",
+          letterSpacing: "-0.01em",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {formatValue(idx.value)}
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-        <div style={{ fontSize: 11, color, fontVariantNumeric: "tabular-nums", fontWeight: 500 }}>
-          <span>{formatChange(idx.change)}</span>
-          <span style={{ marginLeft: 6, opacity: 0.85 }}>{formatPct(idx.change_pct)}</span>
-        </div>
-
-        {idx.spark.length >= 2 && (
-          <svg width={sparkW} height={sparkH} style={{ display: "block", overflow: "visible" }}>
-            <defs>
-              <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" stopColor={color} stopOpacity="0.35" />
-                <stop offset="100%" stopColor={color} stopOpacity="0" />
-              </linearGradient>
-            </defs>
-            <path d={areaPath} fill={`url(#${gradientId})`} />
-            <path d={linePath} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        )}
+      <div
+        style={{
+          fontSize: 10.5,
+          color,
+          fontVariantNumeric: "tabular-nums",
+          fontWeight: 500,
+          display: "flex",
+          gap: 5,
+          whiteSpace: "nowrap",
+        }}
+      >
+        <span>{formatChange(idx.change)}</span>
+        <span style={{ opacity: 0.85 }}>{formatPct(idx.change_pct)}</span>
       </div>
+
+      {idx.spark.length >= 2 && (
+        <svg
+          viewBox={`0 0 ${SPARK_VB_W} ${SPARK_VB_H}`}
+          preserveAspectRatio="none"
+          style={{ display: "block", width: "100%", height: 20, marginTop: 2 }}
+        >
+          <defs>
+            <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity="0.35" />
+              <stop offset="100%" stopColor={color} stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <path d={areaPath} fill={`url(#${gradientId})`} />
+          <path
+            d={linePath}
+            fill="none"
+            stroke={color}
+            strokeWidth={1.25}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            // Non-scaling so the line stays crisp under preserveAspectRatio="none".
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
+      )}
     </div>
   );
 }
 
 export default function MarketSummary() {
   const [indices, setIndices] = useState<IndexData[]>(FALLBACK);
-  const [asOf, setAsOf] = useState<Date | null>(null);
   const [connected, setConnected] = useState<boolean>(false);
   const [flash, setFlash] = useState<Record<string, "up" | "down" | null>>({});
+  const [clock, setClock] = useState<Date | null>(null);
   const prevValuesRef = useRef<Record<string, number>>({});
+
+  // Real-time clock — ticks every second independent of the poll loop.
+  useEffect(() => {
+    setClock(new Date());
+    const t = setInterval(() => setClock(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -162,7 +207,6 @@ export default function MarketSummary() {
         const data = (await res.json()) as IndicesResponse;
         if (!alive) return;
 
-        // Detect per-index price moves vs the previous tick → flash green/red.
         const nextFlash: Record<string, "up" | "down" | null> = {};
         for (const idx of data.indices) {
           const prev = prevValuesRef.current[idx.symbol];
@@ -173,12 +217,10 @@ export default function MarketSummary() {
         }
 
         setIndices(data.indices.length > 0 ? data.indices : FALLBACK);
-        setAsOf(new Date(data.as_of));
         setConnected(true);
 
         if (Object.keys(nextFlash).length > 0) {
           setFlash((prev) => ({ ...prev, ...nextFlash }));
-          // Clear the flash after the CSS transition finishes.
           setTimeout(() => {
             if (!alive) return;
             setFlash((prev) => {
@@ -202,48 +244,67 @@ export default function MarketSummary() {
     };
   }, []);
 
+  const clockText = clock
+    ? clock.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
+    : "--:--:--";
+
   return (
     <div
       style={{
         borderBottom: "1px solid var(--border)",
         display: "flex",
-        alignItems: "center",
+        alignItems: "stretch",
         gap: 4,
-        padding: "10px 24px",
-        overflowX: "auto",
+        padding: "8px 16px",
+        overflow: "hidden",
         transition: "border-color 0.2s ease",
-        position: "relative",
+        width: "100%",
       }}
     >
       <div
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 6,
-          paddingRight: 14,
-          marginRight: 4,
+          gap: 10,
+          paddingRight: 12,
+          marginRight: 6,
           borderRight: "1px solid var(--border)",
           flexShrink: 0,
         }}
       >
-        <span
-          aria-hidden
-          style={{
-            width: 7,
-            height: 7,
-            borderRadius: "50%",
-            background: connected ? "var(--green)" : "var(--muted)",
-            boxShadow: connected ? "0 0 0 0 color-mix(in srgb, var(--green) 60%, transparent)" : "none",
-            animation: connected ? "mp-live-pulse 1.6s ease-out infinite" : "none",
-          }}
-        />
-        <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.15 }}>
-          <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", color: connected ? "var(--green)" : "var(--muted)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span
+            aria-hidden
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              background: connected ? "var(--green)" : "var(--muted)",
+              animation: connected ? "mp-live-pulse 1.6s ease-out infinite" : "none",
+            }}
+          />
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: "0.1em",
+              color: connected ? "var(--green)" : "var(--muted)",
+            }}
+          >
             {connected ? "LIVE" : "OFFLINE"}
           </span>
-          <span style={{ fontSize: 9.5, color: "var(--muted)" }}>
-            {asOf ? asOf.toLocaleTimeString() : "—"}
-          </span>
+        </div>
+        <div
+          title="IST clock"
+          style={{
+            fontSize: 12,
+            fontWeight: 600,
+            fontVariantNumeric: "tabular-nums",
+            color: "var(--fg)",
+            letterSpacing: "0.02em",
+          }}
+        >
+          {clockText}
         </div>
       </div>
 
