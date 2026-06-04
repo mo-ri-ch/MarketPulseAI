@@ -230,23 +230,31 @@ async def _fetch_index(client, display_name: str, symbol: str, precision: int) -
         closes_raw = quote.get("close") or []
 
         # Forward-fill nulls so the spark has no gaps and the latest value is
-        # the most recent real print.
+        # the most recent real print. Carry both the value and its bar's epoch
+        # timestamp so the frontend tooltip can show exactly when each point
+        # represents on the tape.
         spark: list[float] = []
+        spark_ts: list[int] = []
         last: float | None = None
-        for c in closes_raw:
+        for i, c in enumerate(closes_raw):
             if c is not None:
                 last = float(c)
-            if last is not None:
-                spark.append(round(last, precision))
+            if last is None or i >= len(timestamps):
+                continue
+            spark.append(round(last, precision))
+            spark_ts.append(int(timestamps[i]))
 
         # Pin the rightmost spark point to the live regular-market price so
         # the chart edge tracks intra-bar ticks instead of jumping only when
         # Yahoo seals a 1m bar.
+        import time as _t
         live_price = meta.get("regularMarketPrice")
+        live_time = meta.get("regularMarketTime")
         if live_price is not None and spark:
             live_rounded = round(float(live_price), precision)
             if spark[-1] != live_rounded:
                 spark.append(live_rounded)
+                spark_ts.append(int(live_time) if live_time else int(_t.time()))
 
         current = (live_price if live_price is not None else (spark[-1] if spark else None))
         prev_close = (
@@ -266,6 +274,7 @@ async def _fetch_index(client, display_name: str, symbol: str, precision: int) -
         # view of the whole day which makes recent motion invisible.
         if len(spark) > _SPARK_KEEP:
             spark = spark[-_SPARK_KEEP:]
+            spark_ts = spark_ts[-_SPARK_KEEP:]
 
         return {
             "name": display_name,
@@ -276,6 +285,7 @@ async def _fetch_index(client, display_name: str, symbol: str, precision: int) -
             "change_pct": round(change_pct, 2),
             "up": change >= 0,
             "spark": spark,
+            "spark_ts": spark_ts,
             "ts": (timestamps[-1] if timestamps else None),
         }
     except Exception:
