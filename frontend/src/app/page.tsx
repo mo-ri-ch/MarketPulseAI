@@ -45,7 +45,7 @@ export default function Dashboard() {
   // Read-only poll: just fetches /news/insights — the backend scheduler handles crawling independently
   const pollInsights = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/news/insights?limit=50`);
+      const res = await fetch(`${API}/news/insights?limit=1000`);
       if (res.ok) {
         const data = await res.json();
         setInsights(data);

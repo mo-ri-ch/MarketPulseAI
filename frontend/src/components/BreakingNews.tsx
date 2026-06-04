@@ -54,7 +54,7 @@ function sentimentLabel(s: any) {
 }
 
 export default function BreakingNews({ items, loading, newCount, onDismissNew }: Props) {
-  const news = items.slice(0, 30);
+  const news = items;
   const isLive = items.length > 0;
   const prevTopIdRef = useRef<number | null>(null);
   const [freshIds, setFreshIds] = useState<Set<number>>(new Set());
@@ -75,6 +75,122 @@ export default function BreakingNews({ items, loading, newCount, onDismissNew }:
     }
     prevTopIdRef.current = topId;
   }, [items]);
+
+  const now = Date.now();
+  const todayItems: NewsItem[] = [];
+  const yesterdayItems: NewsItem[] = [];
+
+  news.forEach((item) => {
+    const pubTime = item.published_at ? new Date(item.published_at).getTime() : now;
+    const diffHrs = (now - pubTime) / (1000 * 60 * 60);
+    if (diffHrs <= 24) {
+      todayItems.push(item);
+    } else {
+      yesterdayItems.push(item);
+    }
+  });
+
+  const renderGroup = (title: string, groupItems: NewsItem[], isToday: boolean) => {
+    if (groupItems.length === 0) return null;
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{
+          fontSize: 10,
+          fontWeight: 700,
+          color: isToday ? "var(--green)" : "var(--muted)",
+          letterSpacing: "0.05em",
+          textTransform: "uppercase",
+          padding: "8px 0 6px 0",
+          borderBottom: "1px solid var(--border)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          position: "sticky",
+          top: 0,
+          background: "var(--bg)",
+          zIndex: 10,
+          transition: "background-color 0.2s ease, border-color 0.2s ease"
+        }}>
+          <span>{title}</span>
+          <span style={{
+            fontSize: 9,
+            fontWeight: 600,
+            padding: "2px 6px",
+            borderRadius: 10,
+            background: isToday ? "rgba(34,197,94,0.1)" : "var(--border)",
+            color: isToday ? "var(--green)" : "var(--muted)",
+            transition: "background-color 0.2s ease, color 0.2s ease"
+          }}>
+            {groupItems.length} {groupItems.length === 1 ? 'story' : 'stories'}
+          </span>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+          {groupItems.map((item, i) => {
+            const sent = sentimentLabel(item.sentiment);
+            const srcColor = SOURCE_COLORS[item.source ?? ""] ?? DEFAULT_SOURCE;
+            const isFresh = freshIds.has(item.id);
+            return (
+              <div
+                key={item.id ?? i}
+                style={{
+                  padding: "10px 0",
+                  borderBottom: "1px solid var(--border)",
+                  transition: "border-color 0.2s ease, background-color 0.5s ease",
+                  borderRadius: isFresh ? 4 : 0,
+                  background: isFresh ? "rgba(34,197,94,0.06)" : "transparent",
+                  animation: isFresh ? "fadeInRow 0.4s ease-out" : "none",
+                }}
+              >
+                <a
+                  href={item.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    fontWeight: 500, fontSize: 13, color: "var(--fg)",
+                    textDecoration: "none", display: "block",
+                    marginBottom: 4, lineHeight: 1.4,
+                    transition: "color 0.2s ease",
+                  }}
+                >
+                  {item.headline}
+                </a>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  {item.source && (
+                    <span style={{
+                      fontSize: 10, fontWeight: 600,
+                      padding: "1px 6px", borderRadius: 4,
+                      background: srcColor.bg, color: srcColor.text,
+                    }}>
+                      {item.source}
+                    </span>
+                  )}
+                  {item.published_at && (
+                    <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                      {timeAgo(item.published_at)}
+                    </span>
+                  )}
+                  {sent && (
+                    <span style={{ fontSize: 11, color: sent.color, fontWeight: 500 }}>
+                      {sent.label}
+                    </span>
+                  )}
+                  <a
+                    href={item.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ marginLeft: "auto", color: "var(--muted)", display: "flex", alignItems: "center" }}
+                    title="Open article"
+                  >
+                    <ExternalLink size={11} />
+                  </a>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div>
@@ -121,70 +237,20 @@ export default function BreakingNews({ items, loading, newCount, onDismissNew }:
         </div>
       )}
 
-      {/* News list */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-        {news.map((item, i) => {
-          const sent = sentimentLabel(item.sentiment);
-          const srcColor = SOURCE_COLORS[item.source ?? ""] ?? DEFAULT_SOURCE;
-          const isFresh = freshIds.has(item.id);
-          return (
-            <div
-              key={item.id ?? i}
-              style={{
-                padding: "10px 0",
-                borderBottom: "1px solid var(--border)",
-                transition: "border-color 0.2s ease, background-color 0.5s ease",
-                borderRadius: isFresh ? 4 : 0,
-                background: isFresh ? "rgba(34,197,94,0.06)" : "transparent",
-                animation: isFresh ? "fadeInRow 0.4s ease-out" : "none",
-              }}
-            >
-              <a
-                href={item.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  fontWeight: 500, fontSize: 13, color: "var(--fg)",
-                  textDecoration: "none", display: "block",
-                  marginBottom: 4, lineHeight: 1.4,
-                  transition: "color 0.2s ease",
-                }}
-              >
-                {item.headline}
-              </a>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                {item.source && (
-                  <span style={{
-                    fontSize: 10, fontWeight: 600,
-                    padding: "1px 6px", borderRadius: 4,
-                    background: srcColor.bg, color: srcColor.text,
-                  }}>
-                    {item.source}
-                  </span>
-                )}
-                {item.published_at && (
-                  <span style={{ fontSize: 11, color: "var(--muted)" }}>
-                    {timeAgo(item.published_at)}
-                  </span>
-                )}
-                {sent && (
-                  <span style={{ fontSize: 11, color: sent.color, fontWeight: 500 }}>
-                    {sent.label}
-                  </span>
-                )}
-                <a
-                  href={item.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ marginLeft: "auto", color: "var(--muted)", display: "flex", alignItems: "center" }}
-                  title="Open article"
-                >
-                  <ExternalLink size={11} />
-                </a>
-              </div>
-            </div>
-          );
-        })}
+      {/* News list scrollable container */}
+      <div 
+        className="news-scroll-container"
+        style={{ 
+          display: "flex", 
+          flexDirection: "column", 
+          gap: 16,
+          maxHeight: "550px",
+          overflowY: "auto",
+          paddingRight: "6px",
+        }}
+      >
+        {renderGroup("Today / Last 24 Hours", todayItems, true)}
+        {renderGroup("Yesterday / 24-48 Hours Ago", yesterdayItems, false)}
 
         {!loading && news.length === 0 && (
           <p style={{ fontSize: 13, color: "var(--muted)", padding: "20px 0", textAlign: "center" }}>
@@ -193,8 +259,21 @@ export default function BreakingNews({ items, loading, newCount, onDismissNew }:
         )}
       </div>
 
-      {/* Keyframe animations */}
+      {/* Keyframe animations & custom scrollbar */}
       <style>{`
+        .news-scroll-container::-webkit-scrollbar {
+          width: 6px;
+        }
+        .news-scroll-container::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .news-scroll-container::-webkit-scrollbar-thumb {
+          background-color: var(--border);
+          border-radius: 3px;
+        }
+        .news-scroll-container::-webkit-scrollbar-thumb:hover {
+          background-color: var(--muted);
+        }
         @keyframes livePulse {
           0%   { box-shadow: 0 0 0 0 rgba(34,197,94,0.6); }
           70%  { box-shadow: 0 0 0 6px rgba(34,197,94,0); }

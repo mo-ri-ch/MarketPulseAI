@@ -265,7 +265,7 @@ async def trigger_news_fetch(background_tasks: BackgroundTasks):
     return {"message": "News fetch triggered in background."}
 
 @app.get("/news")
-def get_news(response: Response, db: Session = Depends(get_db), skip: int = 0, limit: int = 50):
+def get_news(response: Response, db: Session = Depends(get_db), skip: int = 0, limit: int = 1000):
     """Return latest news items from the database."""
     from crawlers.agent import archive_old_news
     from sqlalchemy import func
@@ -311,7 +311,7 @@ async def analyse_news():
     return result
 
 @app.get("/news/insights")
-def get_insights(response: Response, db: Session = Depends(get_db), limit: int = 30):
+def get_insights(response: Response, db: Session = Depends(get_db), limit: int = 1000):
     """Return news articles with their AI summaries, sentiment scores, and source details."""
     from crawlers.agent import archive_old_news
     from sqlalchemy import func
@@ -394,7 +394,7 @@ async def get_stock_analysis(query: str, db: Session = Depends(get_db)):
     # 1.5. Calculate start of yesterday (current day and day before)
     from datetime import datetime, timedelta
     now = datetime.utcnow()
-    start_of_yesterday = datetime.combine(now.date() - timedelta(days=1), datetime.min.time())
+    start_of_yesterday = now - timedelta(days=2)
 
     # Dynamic live search to fetch recent news about the stock
     search_query = f"{company_name} {ticker} stock"

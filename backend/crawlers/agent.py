@@ -6,7 +6,7 @@ import asyncio
 import logging
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
 from crawlers.base import NewsItem
@@ -102,6 +102,7 @@ async def run_all_crawlers() -> list[NewsItem]:
     seen_urls: set[str] = set()
     ran_at = datetime.utcnow().isoformat()
 
+    cutoff = datetime.utcnow() - timedelta(days=2)
     for name, result, elapsed_ms in results:
         if isinstance(result, Exception):
             LAST_CRAWLER_STATS[name] = {
@@ -122,6 +123,8 @@ async def run_all_crawlers() -> list[NewsItem]:
             "ran_at": ran_at,
         }
         for item in result:
+            if item.published_at and item.published_at < cutoff:
+                continue
             if item.url not in seen_urls:
                 seen_urls.add(item.url)
                 all_items.append(item)
@@ -153,6 +156,7 @@ def save_news_items(items: list[NewsItem]) -> int:
     still order sensibly).
     Returns count of newly saved items.
     """
+    cutoff = datetime.utcnow() - timedelta(days=2)
     db: Session = SessionLocal()
     saved = 0
     skipped_quality = 0
@@ -160,6 +164,10 @@ def save_news_items(items: list[NewsItem]) -> int:
         for item in items:
             if not is_valid_headline(item.headline):
                 skipped_quality += 1
+                continue
+
+            # Skip if older than 48 hours
+            if item.published_at and item.published_at < cutoff:
                 continue
 
             # Skip if URL already exists
@@ -192,21 +200,26 @@ def save_news_items(items: list[NewsItem]) -> int:
 
 
 def archive_old_news(db: Session):
-    """Archive news older than 2 days (48 hours) from current time."""
+    """Delete news older than 2 days (48 hours) from current time."""
     from datetime import datetime, timedelta
+    from sqlalchemy import func
     cutoff = datetime.utcnow() - timedelta(days=2)
     try:
-        num_archived = (
-            db.query(models.News)
-            .filter(
-                models.News.published_at < cutoff,
-                models.News.is_archived == False
-            )
-            .update({models.News.is_archived: True}, synchronize_session=False)
-        )
-        db.commit()
-        if num_archived > 0:
-            logger.info(f"[Archiver] Archived {num_archived} news items older than {cutoff}.")
+        effective_time = func.coalesce(models.News.published_at, models.News.created_at)
+        # Find news IDs older than 2 days
+        old_news = db.query(models.News.id).filter(effective_time < cutoff).all()
+        old_news_ids = [n[0] for n in old_news]
+        
+        if old_news_ids:
+            # Delete associated sentiment scores
+            db.query(models.SentimentScore).filter(models.SentimentScore.news_id.in_(old_news_ids)).delete(synchronize_session=False)
+            # Delete associated summaries
+            db.query(models.Summary).filter(models.Summary.news_id.in_(old_news_ids)).delete(synchronize_session=False)
+            # Delete news items
+            num_deleted = db.query(models.News).filter(models.News.id.in_(old_news_ids)).delete(synchronize_session=False)
+            db.commit()
+            if num_deleted > 0:
+                logger.info(f"[Archiver] Deleted {num_deleted} news items and their associated sentiment/summaries older than {cutoff}.")
     except Exception as e:
         db.rollback()
         logger.error(f"[Archiver] Error running archiver: {e}")
