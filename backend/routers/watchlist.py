@@ -136,6 +136,73 @@ def remove_stock(
     db.commit()
     return {"stocks": existing}
 
+# ── WhatsApp Alert Settings ────────────────────────────────────────────────────
+
+class WhatsAppSettings(BaseModel):
+    phone_number: str   # E.164 format, e.g. "+919876543210"
+    enabled: bool = True
+
+
+def _mask_phone(number: str) -> str:
+    """Return a partially-masked number for display, e.g. +91******3210."""
+    if not number or len(number) < 6:
+        return number
+    country = number[:3]         # e.g. +91
+    last4   = number[-4:]        # e.g. 3210
+    stars   = "*" * (len(number) - 7)
+    return f"{country}{stars}{last4}"
+
+
+@router.get("/user/whatsapp")
+def get_whatsapp_settings(
+    current_user: models.User = Depends(get_current_user),
+):
+    """Return the user's WhatsApp alert configuration (number is masked)."""
+    return {
+        "configured": bool(current_user.whatsapp_number),
+        "phone_number_masked": _mask_phone(current_user.whatsapp_number or ""),
+        "enabled": bool(current_user.whatsapp_alerts_enabled),
+    }
+
+
+@router.put("/user/whatsapp")
+def save_whatsapp_settings(
+    data: WhatsAppSettings,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Save or update the user's WhatsApp number and enable/disable alerts."""
+    phone = data.phone_number.strip().replace(" ", "").replace("-", "")
+    if not phone.startswith("+") or len(phone) < 8:
+        raise HTTPException(
+            status_code=400,
+            detail="Phone number must be in E.164 format, e.g. +919876543210",
+        )
+    user = db.query(models.User).filter(models.User.id == current_user.id).first()
+    user.whatsapp_number = phone
+    user.whatsapp_alerts_enabled = data.enabled
+    db.commit()
+    return {
+        "configured": True,
+        "phone_number_masked": _mask_phone(phone),
+        "enabled": data.enabled,
+        "message": "WhatsApp alerts saved ✓",
+    }
+
+
+@router.delete("/user/whatsapp")
+def delete_whatsapp_settings(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Remove the WhatsApp number and disable alerts for this user."""
+    user = db.query(models.User).filter(models.User.id == current_user.id).first()
+    user.whatsapp_number = None
+    user.whatsapp_alerts_enabled = False
+    db.commit()
+    return {"configured": False, "enabled": False, "message": "WhatsApp alerts removed"}
+
+
 # ── Alerts ─────────────────────────────────────────────────────────────────────
 
 @router.post("/alerts")

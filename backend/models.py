@@ -11,6 +11,9 @@ class User(Base):
     google_id = Column(String, unique=True, index=True, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    # WhatsApp breaking-news alerts
+    whatsapp_number = Column(String, nullable=True)          # E.164, e.g. "+919876543210"
+    whatsapp_alerts_enabled = Column(Boolean, default=False, nullable=False)
 
 class Watchlist(Base):
     __tablename__ = "watchlists"

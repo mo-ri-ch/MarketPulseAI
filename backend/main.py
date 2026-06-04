@@ -59,9 +59,106 @@ async def _cron_crawler_loop():
     while True:
         try:
             logger.info("[Scheduler] Triggering scheduled news crawl...")
+
+            # ── Snapshot IDs before crawl so we can detect truly new articles ──
+            from database import SessionLocal
+            _pre_ids: set[int] = set()
+            try:
+                _db = SessionLocal()
+                _pre_ids = {r[0] for r in _db.query(models.News.id).all()}
+            finally:
+                _db.close()
+
             await fetch_and_save()
             _last_crawl_at = datetime.utcnow()
             logger.info("[Scheduler] Scheduled news crawl complete.")
+
+            # ── Detect new articles & dispatch WhatsApp alerts ─────────────────
+            try:
+                from whatsapp import dispatch_news_alerts
+                from crawlers.sources import NIFTY50_TICKERS
+
+                _db2 = SessionLocal()
+                try:
+                    # Find articles added during this crawl
+                    new_rows = (
+                        _db2.query(models.News, models.Source, models.SentimentScore)
+                        .outerjoin(models.Source, models.Source.id == models.News.source_id)
+                        .outerjoin(models.SentimentScore, models.SentimentScore.news_id == models.News.id)
+                        .filter(models.News.id.notin_(_pre_ids))
+                        .filter(models.News.is_archived == False)
+                        .all()
+                    )
+
+                    if new_rows:
+                        # Build article dicts with ticker matching
+                        import re
+                        new_articles = []
+                        for news, source, sentiment in new_rows:
+                            # Find which tickers this headline mentions
+                            matched_tickers = []
+                            if news.headline:
+                                for ticker, aliases in NIFTY50_TICKERS.items():
+                                    for alias in aliases:
+                                        if len(alias) >= 3 and re.search(
+                                            r"(?i)\b" + re.escape(alias) + r"\b",
+                                            news.headline,
+                                        ):
+                                            matched_tickers.append(ticker)
+                                            break
+                            new_articles.append({
+                                "headline": news.headline,
+                                "url": news.url,
+                                "source": source.name if source else None,
+                                "sentiment": {
+                                    "positive": sentiment.positive if sentiment else 0,
+                                    "negative": sentiment.negative if sentiment else 0,
+                                } if sentiment else None,
+                                "tickers_matched": matched_tickers,
+                            })
+
+                        # Build per-user recipient list (users with WhatsApp enabled)
+                        users = (
+                            _db2.query(models.User)
+                            .filter(
+                                models.User.whatsapp_alerts_enabled == True,
+                                models.User.whatsapp_number.isnot(None),
+                            )
+                            .all()
+                        )
+                        recipients = []
+                        for u in users:
+                            # Collect all tickers from all the user's watchlists
+                            watchlists = (
+                                _db2.query(models.Watchlist)
+                                .filter(models.Watchlist.user_id == u.id)
+                                .all()
+                            )
+                            all_tickers = []
+                            for wl in watchlists:
+                                all_tickers += [
+                                    s.strip().upper()
+                                    for s in (wl.stocks or "").split(",")
+                                    if s.strip()
+                                ]
+                            portfolio_name = watchlists[0].name if watchlists else None
+                            recipients.append({
+                                "whatsapp_number": u.whatsapp_number,
+                                "tickers": all_tickers,
+                                "portfolio_name": portfolio_name,
+                            })
+
+                        if new_articles and recipients:
+                            logger.info(
+                                f"[WhatsApp] Dispatching {len(new_articles)} new articles "
+                                f"to {len(recipients)} recipient(s)."
+                            )
+                            await dispatch_news_alerts(new_articles, recipients)
+                finally:
+                    _db2.close()
+            except Exception as wa_exc:
+                logger.warning(f"[WhatsApp] Alert dispatch error (non-fatal): {wa_exc}")
+
         except Exception as e:
             logger.error(f"[Scheduler] Error in scheduled crawl: {e}")
         # Wait 10 minutes before next crawl
@@ -90,6 +187,23 @@ def _run_startup_db_tasks():
             logging.getLogger(__name__).info("[Startup] Added is_archived column to news table.")
     except Exception as e:
         logging.getLogger(__name__).warning(f"[Startup] Migration check failed: {e}")
+
+    # Self-healing migration: ensure WhatsApp columns exist on users table
+    try:
+        user_cols = [c["name"] for c in inspector.get_columns("users")]
+        driver = engine.url.drivername
+        with engine.begin() as conn:
+            if "whatsapp_number" not in user_cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN whatsapp_number VARCHAR"))
+                logging.getLogger(__name__).info("[Startup] Added whatsapp_number column to users.")
+            if "whatsapp_alerts_enabled" not in user_cols:
+                if "postgresql" in driver:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN whatsapp_alerts_enabled BOOLEAN DEFAULT FALSE NOT NULL"))
+                else:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN whatsapp_alerts_enabled BOOLEAN DEFAULT 0 NOT NULL"))
+                logging.getLogger(__name__).info("[Startup] Added whatsapp_alerts_enabled column to users.")
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"[Startup] WhatsApp migration check failed: {e}")
 
     # Ensure index on published_at for query performance
     try:
