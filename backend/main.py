@@ -349,6 +349,110 @@ async def market_indices(response: Response):
     return snapshot
 
 
+# ── Per-stock quotes (watchlist) ─────────────────────────────────────────────
+
+# Cache keyed by sorted ticker set so multiple identical watchlists coalesce.
+_QUOTES_CACHE: dict[str, dict] = {}
+_QUOTES_TTL = 3.0
+
+
+def _yahoo_symbol(ticker: str) -> str:
+    """Map our internal ticker to a Yahoo Finance symbol (NSE listing)."""
+    # NSE listings live under the `.NS` suffix on Yahoo.
+    return f"{ticker}.NS"
+
+
+async def _fetch_quote(client, ticker: str) -> dict | None:
+    """Pull current price + day change for one NSE stock from Yahoo."""
+    from urllib.parse import quote as _urlquote
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{_urlquote(_yahoo_symbol(ticker), safe='')}"
+    # 1d/1d gives us meta with the current price and previous close — we
+    # don't need intraday bars for a watchlist row.
+    params = {"interval": "1d", "range": "1d", "includePrePost": "false"}
+    try:
+        r = await client.get(url, params=params, timeout=6.0)
+        if r.status_code != 200:
+            return None
+        result = r.json().get("chart", {}).get("result")
+        if not result:
+            return None
+        meta = (result[0] or {}).get("meta", {}) or {}
+        price = meta.get("regularMarketPrice")
+        prev = meta.get("chartPreviousClose") or meta.get("previousClose")
+        if price is None or not prev:
+            return None
+        price = float(price)
+        prev = float(prev)
+        change = price - prev
+        change_pct = (change / prev) * 100.0
+        return {
+            "ticker": ticker,
+            "value": round(price, 2),
+            "prev_close": round(prev, 2),
+            "change": round(change, 2),
+            "change_pct": round(change_pct, 2),
+            "up": change >= 0,
+        }
+    except Exception:
+        return None
+
+
+@app.get("/market/quotes")
+async def market_quotes(tickers: str, response: Response):
+    """
+    Live price + day-change for a comma-separated list of NSE tickers.
+
+    Used by the watchlist panel — `tickers=RELIANCE,INFY,IRCTC` returns a
+    dict keyed by ticker so the frontend can render real per-row changes
+    instead of a hardcoded placeholder.
+    """
+    import time
+    import httpx
+    import asyncio as _asyncio
+
+    raw = [t.strip().upper() for t in tickers.split(",") if t.strip()]
+    # Dedupe while preserving the caller's order.
+    seen: set[str] = set()
+    syms: list[str] = []
+    for t in raw:
+        if t not in seen:
+            seen.add(t)
+            syms.append(t)
+    if not syms:
+        return {"as_of": datetime.utcnow().isoformat() + "Z", "quotes": {}}
+
+    cache_key = ",".join(sorted(syms))
+    now = time.time()
+    cached = _QUOTES_CACHE.get(cache_key)
+    if cached and (now - cached["at"]) < _QUOTES_TTL:
+        response.headers["Cache-Control"] = "no-store"
+        return cached["data"]
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": "application/json,text/plain,*/*",
+    }
+    async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
+        results = await _asyncio.gather(*[_fetch_quote(client, t) for t in syms])
+
+    quotes_map: dict[str, dict] = {}
+    for q in results:
+        if q is not None:
+            quotes_map[q["ticker"]] = q
+
+    snapshot = {
+        "as_of": datetime.utcnow().isoformat() + "Z",
+        "quotes": quotes_map,
+    }
+    _QUOTES_CACHE[cache_key] = {"at": now, "data": snapshot}
+    response.headers["Cache-Control"] = "no-store"
+    return snapshot
+
+
 @app.get("/debug/crawler-status")
 def debug_crawler_status():
     """Per-crawler success/failure from the most recent scheduled crawl."""

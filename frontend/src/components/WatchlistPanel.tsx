@@ -1,8 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { apiJson, isLoggedIn, AuthError } from "@/lib/api";
+
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const QUOTES_POLL_MS = 10_000;
+
+interface Quote {
+  ticker: string;
+  value: number;
+  change: number;
+  change_pct: number;
+  up: boolean;
+}
 
 // Searchable ticker universe — NIFTY 50 + popular non-NIFTY-50 retail names
 // (IRCTC, SUZLON, IRFC, HAL, BEL, etc.) so substring search resolves them.
@@ -53,6 +64,10 @@ export default function WatchlistPanel({ onSelectStock }: Props) {
   const [newListName, setNewListName] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [quotes, setQuotes] = useState<Record<string, Quote>>({});
+  // Used to detect when the active list's tickers actually change, so the
+  // polling effect doesn't re-fetch on every render.
+  const tickersKeyRef = useRef<string>("");
 
   // Initial load: check auth then fetch lists (auto-creating a default if empty)
   useEffect(() => {
@@ -92,6 +107,42 @@ export default function WatchlistPanel({ onSelectStock }: Props) {
   const suggestions = NIFTY_STOCKS.filter(
     (s) => s.includes(search.toUpperCase()) && !active?.stocks.includes(s)
   );
+
+  // Poll real per-stock quotes for the active watchlist. Re-fires when the
+  // ticker set changes; ticks every QUOTES_POLL_MS while mounted.
+  const tickersKey = (active?.stocks ?? []).join(",");
+  useEffect(() => {
+    tickersKeyRef.current = tickersKey;
+    if (!tickersKey) {
+      setQuotes({});
+      return;
+    }
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const tick = async () => {
+      try {
+        const res = await fetch(
+          `${API}/market/quotes?tickers=${encodeURIComponent(tickersKey)}`,
+          { cache: "no-store" },
+        );
+        if (res.ok && alive && tickersKeyRef.current === tickersKey) {
+          const data = (await res.json()) as { quotes: Record<string, Quote> };
+          setQuotes(data.quotes || {});
+        }
+      } catch {
+        // Network blip — keep the previous quotes on screen.
+      } finally {
+        if (alive) timer = setTimeout(tick, QUOTES_POLL_MS);
+      }
+    };
+
+    tick();
+    return () => {
+      alive = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [tickersKey]);
 
   const addStock = async (ticker: string) => {
     if (!active) return;
@@ -275,7 +326,25 @@ export default function WatchlistPanel({ onSelectStock }: Props) {
             >
               <span style={{ fontWeight: 500, fontSize: 13, color: "var(--fg)" }}>{ticker}</span>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 12, color: "var(--green)" }}>+0.42%</span>
+                {(() => {
+                  const q = quotes[ticker];
+                  if (!q) {
+                    return <span style={{ fontSize: 12, color: "var(--muted)", fontVariantNumeric: "tabular-nums" }}>—</span>;
+                  }
+                  const sign = q.change_pct >= 0 ? "+" : "";
+                  return (
+                    <span
+                      title={`₹${q.value.toLocaleString("en-IN", { minimumFractionDigits: 2 })}  (${sign}${q.change.toFixed(2)})`}
+                      style={{
+                        fontSize: 12,
+                        color: q.up ? "var(--green)" : "var(--red)",
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {sign}{q.change_pct.toFixed(2)}%
+                    </span>
+                  );
+                })()}
                 <button
                   onClick={(e) => { e.stopPropagation(); removeStock(ticker); }}
                   style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 0, display: "flex" }}
