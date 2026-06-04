@@ -629,13 +629,49 @@ async def analyse_news():
     return result
 
 @app.get("/news/insights")
-def get_insights(response: Response, db: Session = Depends(get_db), limit: int = 1000):
-    """Return news articles with their AI summaries, sentiment scores, and source details."""
+def get_insights(
+    response: Response,
+    db: Session = Depends(get_db),
+    limit: int = 1000,
+    tickers: str | None = None,
+):
+    """Return news articles with their AI summaries, sentiment scores, and source details.
+
+    Optional `tickers=A,B,C` filters the result to headlines mentioning any
+    alias of the requested tickers. Used by the dashboard's "Watchlist"
+    feed mode so users see only news relevant to stocks they care about.
+    """
+    import re
     from crawlers.agent import archive_old_news
+    from crawlers.sources import NIFTY50_TICKERS
     from sqlalchemy import func
     archive_old_news(db)
 
     effective_time = func.coalesce(models.News.published_at, models.News.created_at)
+
+    # Build a word-boundary regex if filtering. We do this in Python after the
+    # query rather than via SQL ILIKE because substring matching produced
+    # false positives ("April" matching RIL, "Drilling" matching RIL, etc.).
+    headline_filter: re.Pattern[str] | None = None
+    if tickers:
+        requested = [t.strip().upper() for t in tickers.split(",") if t.strip()]
+        alias_set: set[str] = set()
+        for tk in requested:
+            aliases = NIFTY50_TICKERS.get(tk, [tk])
+            for a in aliases:
+                if len(a) >= 3:
+                    alias_set.add(a)
+            if len(tk) >= 3:
+                alias_set.add(tk)
+        if not alias_set:
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+            return []
+        # Sort longer aliases first so the regex engine prefers e.g.
+        # "Reliance Industries" over the bare "RIL". Escape non-word chars
+        # (& - . etc.) so M&M and BAJAJ-AUTO work literally.
+        sorted_aliases = sorted(alias_set, key=len, reverse=True)
+        pattern = r"(?i)\b(?:" + "|".join(re.escape(a) for a in sorted_aliases) + r")\b"
+        headline_filter = re.compile(pattern)
 
     rows = (
         db.query(models.News, models.Source, models.Summary, models.SentimentScore)
@@ -647,6 +683,9 @@ def get_insights(response: Response, db: Session = Depends(get_db), limit: int =
         .limit(limit)
         .all()
     )
+
+    if headline_filter is not None:
+        rows = [r for r in rows if r[0].headline and headline_filter.search(r[0].headline)]
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     return [
         {

@@ -52,9 +52,12 @@ interface Watchlist {
   stocks: string[];
 }
 
-interface Props { onSelectStock?: (ticker: string) => void; }
+interface Props {
+  onSelectStock?: (ticker: string) => void;
+  onActiveTickersChange?: (tickers: string[]) => void;
+}
 
-export default function WatchlistPanel({ onSelectStock }: Props) {
+export default function WatchlistPanel({ onSelectStock, onActiveTickersChange }: Props) {
   const [authed, setAuthed] = useState(false);
   const [lists, setLists] = useState<Watchlist[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
@@ -111,6 +114,16 @@ export default function WatchlistPanel({ onSelectStock }: Props) {
   // Poll real per-stock quotes for the active watchlist. Re-fires when the
   // ticker set changes; ticks every QUOTES_POLL_MS while mounted.
   const tickersKey = (active?.stocks ?? []).join(",");
+
+  // Bubble the active list's tickers up so the dashboard can filter the
+  // news feed to watchlist-relevant headlines.
+  useEffect(() => {
+    onActiveTickersChange?.(active?.stocks ?? []);
+    // We intentionally depend on tickersKey instead of the array identity so
+    // we only fire when the set actually changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tickersKey]);
+
   useEffect(() => {
     tickersKeyRef.current = tickersKey;
     if (!tickersKey) {

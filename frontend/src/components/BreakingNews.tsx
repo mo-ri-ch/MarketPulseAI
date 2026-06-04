@@ -36,6 +36,9 @@ interface Props {
   loading: boolean;
   newCount: number;
   onDismissNew: () => void;
+  feedMode?: "watchlist" | "all";
+  onFeedModeChange?: (mode: "watchlist" | "all") => void;
+  watchlistSize?: number;
 }
 
 function timeAgo(dateStr: string) {
@@ -53,9 +56,19 @@ function sentimentLabel(s: any) {
   return { label: "Neutral", color: "#eab308" };
 }
 
-export default function BreakingNews({ items, loading, newCount, onDismissNew }: Props) {
+export default function BreakingNews({
+  items,
+  loading,
+  newCount,
+  onDismissNew,
+  feedMode = "all",
+  onFeedModeChange,
+  watchlistSize = 0,
+}: Props) {
   const news = items;
   const isLive = items.length > 0;
+  const watchlistAvailable = watchlistSize > 0;
+  const showingWatchlist = feedMode === "watchlist" && watchlistAvailable;
   const prevTopIdRef = useRef<number | null>(null);
   const [freshIds, setFreshIds] = useState<Set<number>>(new Set());
 
@@ -195,8 +208,8 @@ export default function BreakingNews({ items, loading, newCount, onDismissNew }:
   return (
     <div>
       {/* Header row */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <h2 style={{ fontWeight: 600, fontSize: 13, color: "var(--fg)", transition: "color 0.2s ease", margin: 0 }}>
             News
           </h2>
@@ -212,9 +225,62 @@ export default function BreakingNews({ items, loading, newCount, onDismissNew }:
             }} />
             LIVE
           </span>
+
+          {/* Feed-mode segmented control */}
+          {onFeedModeChange && (
+            <div
+              role="tablist"
+              aria-label="News feed scope"
+              style={{
+                display: "flex",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                padding: 2,
+                fontSize: 11,
+                fontWeight: 500,
+                background: "var(--bg)",
+              }}
+            >
+              <button
+                role="tab"
+                aria-selected={showingWatchlist}
+                onClick={() => onFeedModeChange("watchlist")}
+                disabled={!watchlistAvailable}
+                title={watchlistAvailable ? "Show only news mentioning your watchlist stocks" : "Add stocks to your watchlist to enable this filter"}
+                style={{
+                  padding: "3px 9px",
+                  borderRadius: 4,
+                  border: "none",
+                  cursor: watchlistAvailable ? "pointer" : "not-allowed",
+                  opacity: watchlistAvailable ? 1 : 0.45,
+                  background: showingWatchlist ? "var(--fg)" : "transparent",
+                  color: showingWatchlist ? "var(--bg)" : "var(--muted)",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                Watchlist{watchlistAvailable ? ` · ${watchlistSize}` : ""}
+              </button>
+              <button
+                role="tab"
+                aria-selected={!showingWatchlist}
+                onClick={() => onFeedModeChange("all")}
+                style={{
+                  padding: "3px 9px",
+                  borderRadius: 4,
+                  border: "none",
+                  cursor: "pointer",
+                  background: !showingWatchlist ? "var(--fg)" : "transparent",
+                  color: !showingWatchlist ? "var(--bg)" : "var(--muted)",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                All News
+              </button>
+            </div>
+          )}
         </div>
         <span style={{ fontSize: 12, color: "var(--muted)", transition: "color 0.2s ease" }}>
-          {loading ? "Fetching…" : `${news.length} stories`}
+          {loading ? "Fetching…" : `${news.length} ${news.length === 1 ? "story" : "stories"}`}
         </span>
       </div>
 
@@ -253,8 +319,30 @@ export default function BreakingNews({ items, loading, newCount, onDismissNew }:
         {renderGroup("Yesterday / 24-48 Hours Ago", yesterdayItems, false)}
 
         {!loading && news.length === 0 && (
-          <p style={{ fontSize: 13, color: "var(--muted)", padding: "20px 0", textAlign: "center" }}>
-            No news yet — the backend is fetching updates every 10 minutes.
+          <p style={{ fontSize: 13, color: "var(--muted)", padding: "20px 0", textAlign: "center", lineHeight: 1.6 }}>
+            {showingWatchlist ? (
+              <>
+                No recent news mentions your watchlist stocks.{" "}
+                {onFeedModeChange && (
+                  <button
+                    onClick={() => onFeedModeChange("all")}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      color: "var(--fg)",
+                      textDecoration: "underline",
+                      cursor: "pointer",
+                      fontSize: 13,
+                    }}
+                  >
+                    Show all news instead
+                  </button>
+                )}
+              </>
+            ) : (
+              "No news yet — the backend is fetching updates every 10 minutes."
+            )}
           </p>
         )}
       </div>

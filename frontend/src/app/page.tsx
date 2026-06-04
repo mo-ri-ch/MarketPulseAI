@@ -17,6 +17,8 @@ export default function Dashboard() {
   const [selectedStock, setSelectedStock] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [watchlistTickers, setWatchlistTickers] = useState<string[]>([]);
+  const [feedMode, setFeedMode] = useState<"watchlist" | "all">("watchlist");
   const prevIdsRef = useRef<Set<number>>(new Set());
 
   useEffect(() => {
@@ -42,10 +44,18 @@ export default function Dashboard() {
     }
   };
 
+  // Whether we should actually filter (mode says watchlist AND we have tickers).
+  const useWatchlistFilter = feedMode === "watchlist" && watchlistTickers.length > 0;
+  // Memo-stable join so the poll callback's identity flips only on real change.
+  const tickersKey = watchlistTickers.join(",");
+
   // Read-only poll: just fetches /news/insights — the backend scheduler handles crawling independently
   const pollInsights = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/news/insights?limit=1000`);
+      const url = useWatchlistFilter
+        ? `${API}/news/insights?limit=1000&tickers=${encodeURIComponent(tickersKey)}`
+        : `${API}/news/insights?limit=1000`;
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setInsights(data);
@@ -62,7 +72,7 @@ export default function Dashboard() {
     } catch {
       // Network error — keep showing last known data
     }
-  }, []);
+  }, [useWatchlistFilter, tickersKey]);
 
   // Manual refresh: trigger a crawl immediately then read
   const manualRefresh = useCallback(async () => {
@@ -97,7 +107,10 @@ export default function Dashboard() {
       <main style={{ maxWidth: 1200, margin: "0 auto", padding: "28px 24px", display: "grid", gridTemplateColumns: "200px 1fr 200px", gap: 40 }}>
         {/* Left: Watchlist */}
         <aside>
-          <WatchlistPanel onSelectStock={setSelectedStock} />
+          <WatchlistPanel
+            onSelectStock={setSelectedStock}
+            onActiveTickersChange={setWatchlistTickers}
+          />
         </aside>
 
         {/* Center: Stock view OR live news feed */}
@@ -105,7 +118,15 @@ export default function Dashboard() {
           {selectedStock ? (
             <StockAnalysisView ticker={selectedStock} onBack={() => setSelectedStock(null)} />
           ) : (
-            <BreakingNews items={insights} loading={loading} newCount={newCount} onDismissNew={dismissNewBanner} />
+            <BreakingNews
+              items={insights}
+              loading={loading}
+              newCount={newCount}
+              onDismissNew={dismissNewBanner}
+              feedMode={feedMode}
+              onFeedModeChange={setFeedMode}
+              watchlistSize={watchlistTickers.length}
+            />
           )}
         </section>
 
