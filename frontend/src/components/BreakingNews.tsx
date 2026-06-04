@@ -31,14 +31,21 @@ interface NewsItem {
   sentiment?: { positive: number; negative: number };
 }
 
+interface PortfolioSummary {
+  id: number;
+  name: string;
+  tickers: string[];
+}
+
 interface Props {
   items: NewsItem[];
   loading: boolean;
   newCount: number;
   onDismissNew: () => void;
-  feedMode?: "watchlist" | "all";
-  onFeedModeChange?: (mode: "watchlist" | "all") => void;
-  watchlistSize?: number;
+  portfolios?: PortfolioSummary[];
+  // null = "All News"; otherwise the portfolio id whose tickers filter the feed.
+  feedPortfolioId?: number | null;
+  onFeedPortfolioChange?: (id: number | null) => void;
 }
 
 function timeAgo(dateStr: string) {
@@ -61,14 +68,14 @@ export default function BreakingNews({
   loading,
   newCount,
   onDismissNew,
-  feedMode = "all",
-  onFeedModeChange,
-  watchlistSize = 0,
+  portfolios = [],
+  feedPortfolioId = null,
+  onFeedPortfolioChange,
 }: Props) {
   const news = items;
   const isLive = items.length > 0;
-  const watchlistAvailable = watchlistSize > 0;
-  const showingWatchlist = feedMode === "watchlist" && watchlistAvailable;
+  const activePortfolio = portfolios.find((p) => p.id === feedPortfolioId) ?? null;
+  const showingPortfolio = activePortfolio !== null;
   const prevTopIdRef = useRef<number | null>(null);
   const [freshIds, setFreshIds] = useState<Set<number>>(new Set());
 
@@ -226,57 +233,46 @@ export default function BreakingNews({
             LIVE
           </span>
 
-          {/* Feed-mode segmented control */}
-          {onFeedModeChange && (
-            <div
-              role="tablist"
-              aria-label="News feed scope"
-              style={{
-                display: "flex",
-                border: "1px solid var(--border)",
-                borderRadius: 6,
-                padding: 2,
-                fontSize: 11,
-                fontWeight: 500,
-                background: "var(--bg)",
-              }}
-            >
-              <button
-                role="tab"
-                aria-selected={showingWatchlist}
-                onClick={() => onFeedModeChange("watchlist")}
-                disabled={!watchlistAvailable}
-                title={watchlistAvailable ? "Show only news mentioning your watchlist stocks" : "Add stocks to your watchlist to enable this filter"}
-                style={{
-                  padding: "3px 9px",
-                  borderRadius: 4,
-                  border: "none",
-                  cursor: watchlistAvailable ? "pointer" : "not-allowed",
-                  opacity: watchlistAvailable ? 1 : 0.45,
-                  background: showingWatchlist ? "var(--fg)" : "transparent",
-                  color: showingWatchlist ? "var(--bg)" : "var(--muted)",
-                  transition: "all 0.15s ease",
+          {/* Portfolio selector — "All News" plus one entry per portfolio. */}
+          {onFeedPortfolioChange && portfolios.length > 0 && (
+            <label style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                Showing
+              </span>
+              <select
+                aria-label="News feed scope"
+                value={feedPortfolioId ?? "all"}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  onFeedPortfolioChange(v === "all" ? null : Number(v));
                 }}
-              >
-                Watchlist{watchlistAvailable ? ` · ${watchlistSize}` : ""}
-              </button>
-              <button
-                role="tab"
-                aria-selected={!showingWatchlist}
-                onClick={() => onFeedModeChange("all")}
                 style={{
-                  padding: "3px 9px",
-                  borderRadius: 4,
-                  border: "none",
+                  fontSize: 11,
+                  fontWeight: 500,
+                  padding: "3px 22px 3px 8px",
+                  border: "1px solid var(--border)",
+                  borderRadius: 6,
+                  background: "var(--bg)",
+                  color: "var(--fg)",
                   cursor: "pointer",
-                  background: !showingWatchlist ? "var(--fg)" : "transparent",
-                  color: !showingWatchlist ? "var(--bg)" : "var(--muted)",
-                  transition: "all 0.15s ease",
+                  appearance: "none",
+                  // Inline chevron so the control reads as a dropdown across themes.
+                  backgroundImage:
+                    "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='3,5 6,8 9,5'/%3E%3C/svg%3E\")",
+                  backgroundRepeat: "no-repeat",
+                  backgroundPosition: "right 6px center",
+                  backgroundSize: "10px 10px",
                 }}
               >
-                All News
-              </button>
-            </div>
+                {portfolios.map((p) => (
+                  <option key={p.id} value={p.id} disabled={p.tickers.length === 0}>
+                    {p.name}
+                    {p.tickers.length === 0 ? " (empty)" : ` · ${p.tickers.length}`}
+                  </option>
+                ))}
+                <option value="all">All News</option>
+              </select>
+            </label>
           )}
         </div>
         <span style={{ fontSize: 12, color: "var(--muted)", transition: "color 0.2s ease" }}>
@@ -320,12 +316,12 @@ export default function BreakingNews({
 
         {!loading && news.length === 0 && (
           <p style={{ fontSize: 13, color: "var(--muted)", padding: "20px 0", textAlign: "center", lineHeight: 1.6 }}>
-            {showingWatchlist ? (
+            {showingPortfolio && activePortfolio ? (
               <>
-                No recent news mentions your watchlist stocks.{" "}
-                {onFeedModeChange && (
+                No recent news mentions stocks in <strong style={{ color: "var(--fg)" }}>{activePortfolio.name}</strong>.{" "}
+                {onFeedPortfolioChange && (
                   <button
-                    onClick={() => onFeedModeChange("all")}
+                    onClick={() => onFeedPortfolioChange(null)}
                     style={{
                       background: "none",
                       border: "none",

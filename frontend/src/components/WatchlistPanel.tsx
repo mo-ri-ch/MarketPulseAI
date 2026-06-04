@@ -52,12 +52,18 @@ interface Watchlist {
   stocks: string[];
 }
 
-interface Props {
-  onSelectStock?: (ticker: string) => void;
-  onActiveTickersChange?: (tickers: string[]) => void;
+export interface PortfolioSummary {
+  id: number;
+  name: string;
+  tickers: string[];
 }
 
-export default function WatchlistPanel({ onSelectStock, onActiveTickersChange }: Props) {
+interface Props {
+  onSelectStock?: (ticker: string) => void;
+  onPortfoliosChange?: (portfolios: PortfolioSummary[]) => void;
+}
+
+export default function WatchlistPanel({ onSelectStock, onPortfoliosChange }: Props) {
   const [authed, setAuthed] = useState(false);
   const [lists, setLists] = useState<Watchlist[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
@@ -115,14 +121,17 @@ export default function WatchlistPanel({ onSelectStock, onActiveTickersChange }:
   // ticker set changes; ticks every QUOTES_POLL_MS while mounted.
   const tickersKey = (active?.stocks ?? []).join(",");
 
-  // Bubble the active list's tickers up so the dashboard can filter the
-  // news feed to watchlist-relevant headlines.
+  // Bubble the entire portfolio set up so the dashboard's news header can
+  // offer a per-portfolio filter dropdown. We send the whole shape (id,
+  // name, tickers) and rebuild it on any structural change.
+  const portfoliosKey = lists.map((l) => `${l.id}:${l.name}:${l.stocks.join("|")}`).join(";");
   useEffect(() => {
-    onActiveTickersChange?.(active?.stocks ?? []);
-    // We intentionally depend on tickersKey instead of the array identity so
-    // we only fire when the set actually changes.
+    onPortfoliosChange?.(
+      lists.map((l) => ({ id: l.id, name: l.name, tickers: l.stocks })),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tickersKey]);
+  }, [portfoliosKey]);
+
 
   useEffect(() => {
     tickersKeyRef.current = tickersKey;

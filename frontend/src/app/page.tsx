@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Header from "@/components/Header";
 import MarketSummary from "@/components/MarketSummary";
-import WatchlistPanel from "@/components/WatchlistPanel";
+import WatchlistPanel, { type PortfolioSummary } from "@/components/WatchlistPanel";
 import BreakingNews from "@/components/BreakingNews";
 import SentimentPanel from "@/components/SentimentPanel";
 import StockAnalysisView from "@/components/StockAnalysisView";
@@ -17,9 +17,29 @@ export default function Dashboard() {
   const [selectedStock, setSelectedStock] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [theme, setTheme] = useState<"light" | "dark">("light");
-  const [watchlistTickers, setWatchlistTickers] = useState<string[]>([]);
-  const [feedMode, setFeedMode] = useState<"watchlist" | "all">("watchlist");
+  const [portfolios, setPortfolios] = useState<PortfolioSummary[]>([]);
+  // null = "All News"; otherwise the portfolio id whose tickers drive the
+  // news filter. Auto-defaults to the first portfolio once one arrives.
+  const [feedPortfolioId, setFeedPortfolioId] = useState<number | null>(null);
+  const userPickedFeedRef = useRef<boolean>(false);
   const prevIdsRef = useRef<Set<number>>(new Set());
+
+  // Auto-select the first portfolio for the news filter the first time
+  // portfolios arrive. Don't override after that — user picks win.
+  useEffect(() => {
+    if (userPickedFeedRef.current) return;
+    if (portfolios.length > 0 && feedPortfolioId === null) {
+      setFeedPortfolioId(portfolios[0].id);
+    }
+  }, [portfolios, feedPortfolioId]);
+
+  const handleFeedPortfolioChange = useCallback((id: number | null) => {
+    userPickedFeedRef.current = true;
+    setFeedPortfolioId(id);
+  }, []);
+
+  const activePortfolio = portfolios.find((p) => p.id === feedPortfolioId) ?? null;
+  const filterTickers = activePortfolio?.tickers ?? [];
 
   useEffect(() => {
     const saved = localStorage.getItem("theme");
@@ -44,15 +64,15 @@ export default function Dashboard() {
     }
   };
 
-  // Whether we should actually filter (mode says watchlist AND we have tickers).
-  const useWatchlistFilter = feedMode === "watchlist" && watchlistTickers.length > 0;
+  // Filter is active when a portfolio (not "all") is selected AND it has tickers.
+  const useFilter = feedPortfolioId !== null && filterTickers.length > 0;
   // Memo-stable join so the poll callback's identity flips only on real change.
-  const tickersKey = watchlistTickers.join(",");
+  const tickersKey = filterTickers.join(",");
 
   // Read-only poll: just fetches /news/insights — the backend scheduler handles crawling independently
   const pollInsights = useCallback(async () => {
     try {
-      const url = useWatchlistFilter
+      const url = useFilter
         ? `${API}/news/insights?limit=1000&tickers=${encodeURIComponent(tickersKey)}`
         : `${API}/news/insights?limit=1000`;
       const res = await fetch(url);
@@ -72,7 +92,7 @@ export default function Dashboard() {
     } catch {
       // Network error — keep showing last known data
     }
-  }, [useWatchlistFilter, tickersKey]);
+  }, [useFilter, tickersKey]);
 
   // Manual refresh: trigger a crawl immediately then read
   const manualRefresh = useCallback(async () => {
@@ -109,7 +129,7 @@ export default function Dashboard() {
         <aside>
           <WatchlistPanel
             onSelectStock={setSelectedStock}
-            onActiveTickersChange={setWatchlistTickers}
+            onPortfoliosChange={setPortfolios}
           />
         </aside>
 
@@ -123,9 +143,9 @@ export default function Dashboard() {
               loading={loading}
               newCount={newCount}
               onDismissNew={dismissNewBanner}
-              feedMode={feedMode}
-              onFeedModeChange={setFeedMode}
-              watchlistSize={watchlistTickers.length}
+              portfolios={portfolios}
+              feedPortfolioId={feedPortfolioId}
+              onFeedPortfolioChange={handleFeedPortfolioChange}
             />
           )}
         </section>
