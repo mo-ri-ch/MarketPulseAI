@@ -199,14 +199,22 @@ _INDEX_SYMBOLS: list[tuple[str, str, int]] = [
 ]
 
 # In-process cache so we don't hammer Yahoo when many tabs poll us at once.
+# 1.5s TTL is short enough that a 2s frontend poll still sees fresh data on
+# every other tick, while still coalescing burst load from multiple clients.
 _INDICES_CACHE: dict = {"at": 0.0, "data": None}
-_INDICES_TTL = 8.0  # seconds
+_INDICES_TTL = 1.5  # seconds
+
+# How many 1-minute spark points to keep — most recent ~hour of trading.
+_SPARK_KEEP = 60
 
 
 async def _fetch_index(client, display_name: str, symbol: str, precision: int) -> dict | None:
     """Fetch one index from Yahoo Finance v8 chart API. Returns None on failure."""
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
-    params = {"interval": "5m", "range": "1d", "includePrePost": "false"}
+    # 1m bars for near-real-time intraday resolution. Yahoo backfills the
+    # current minute's bar continuously, so the right edge of the chart
+    # tracks the live tape closely during market hours.
+    params = {"interval": "1m", "range": "1d", "includePrePost": "false"}
     try:
         r = await client.get(url, params=params, timeout=8.0)
         if r.status_code != 200:
@@ -221,9 +229,8 @@ async def _fetch_index(client, display_name: str, symbol: str, precision: int) -
         quote = (node.get("indicators", {}) or {}).get("quote", [{}])[0] or {}
         closes_raw = quote.get("close") or []
 
-        # Yahoo seeds nulls when no trade in a 5m bucket — forward-fill so the
-        # sparkline doesn't have gaps and the latest value is the most recent
-        # real print, not whatever the meta block claims.
+        # Forward-fill nulls so the spark has no gaps and the latest value is
+        # the most recent real print.
         spark: list[float] = []
         last: float | None = None
         for c in closes_raw:
@@ -232,10 +239,16 @@ async def _fetch_index(client, display_name: str, symbol: str, precision: int) -
             if last is not None:
                 spark.append(round(last, precision))
 
-        current = (
-            meta.get("regularMarketPrice")
-            or (spark[-1] if spark else None)
-        )
+        # Pin the rightmost spark point to the live regular-market price so
+        # the chart edge tracks intra-bar ticks instead of jumping only when
+        # Yahoo seals a 1m bar.
+        live_price = meta.get("regularMarketPrice")
+        if live_price is not None and spark:
+            live_rounded = round(float(live_price), precision)
+            if spark[-1] != live_rounded:
+                spark.append(live_rounded)
+
+        current = (live_price if live_price is not None else (spark[-1] if spark else None))
         prev_close = (
             meta.get("chartPreviousClose")
             or meta.get("previousClose")
@@ -248,10 +261,11 @@ async def _fetch_index(client, display_name: str, symbol: str, precision: int) -
         change = current - prev_close
         change_pct = (change / prev_close) * 100.0
 
-        # Downsample the sparkline to ~40 points so the SVG stays light.
-        if len(spark) > 40:
-            step = max(1, len(spark) // 40)
-            spark = spark[::step][-40:]
+        # Keep the most recent N points at full 1m resolution so the chart
+        # visibly slides as new bars arrive, instead of an evenly downsampled
+        # view of the whole day which makes recent motion invisible.
+        if len(spark) > _SPARK_KEEP:
+            spark = spark[-_SPARK_KEEP:]
 
         return {
             "name": display_name,

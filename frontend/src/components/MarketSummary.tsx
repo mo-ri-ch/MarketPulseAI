@@ -4,8 +4,9 @@ import { useEffect, useRef, useState } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-// Poll cadence in ms. Backend caches for ~8s so this is fine.
-const POLL_MS = 10_000;
+// Poll cadence in ms. Backend caches for ~1.5s so every other tick hits a
+// fresh Yahoo response, giving near-real-time updates without hammering it.
+const POLL_MS = 2_000;
 
 interface IndexData {
   name: string;
@@ -228,7 +229,7 @@ export default function MarketSummary() {
               for (const k of Object.keys(nextFlash)) cleared[k] = null;
               return cleared;
             });
-          }, 900);
+          }, 600);
         }
       } catch {
         if (alive) setConnected(false);
