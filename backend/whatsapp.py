@@ -100,7 +100,7 @@ def format_news_alert(news_item: dict, portfolio_name: str | None = None) -> str
     return "\n".join(lines)
 
 
-async def send_whatsapp_message(to: str, text: str) -> bool:
+async def send_whatsapp_message(to: str, text: str) -> dict:
     """
     Send a plain-text WhatsApp message via Meta Cloud API.
 
@@ -109,19 +109,42 @@ async def send_whatsapp_message(to: str, text: str) -> bool:
     to   : E.164 phone number string, e.g. "+919876543210"
     text : Message body (max ~4096 chars for regular text messages)
 
-    Returns True on success, False on failure (logged internally).
+    Returns
+    -------
+    dict with diagnostic detail so callers / test endpoints can introspect:
+        {"ok": bool, "status_code": int | None, "body": str, "error": str | None,
+         "phone": str, "configured": bool, "graph_url": str}
+
+    Note on Meta delivery rules: a `text` message is only delivered to the
+    recipient if the business is inside a 24-hour customer-service window
+    (i.e. the recipient messaged the WhatsApp Business number in the last
+    24h). For unsolicited outbound alerts, Meta requires a pre-approved
+    `template` message. The API can return 200 OK with a message id and
+    still drop the message at the recipient side — so a 200 here does NOT
+    guarantee the user's phone ever rings.
     """
+    info = {
+        "ok": False,
+        "status_code": None,
+        "body": "",
+        "error": None,
+        "phone": to,
+        "configured": _is_configured(),
+        "graph_url": _GRAPH_URL,
+    }
+
     if not _is_configured():
-        logger.warning(
-            "[WhatsApp] WHATSAPP_TOKEN or WHATSAPP_PHONE_ID not set — "
-            "skipping alert dispatch."
+        info["error"] = (
+            "WHATSAPP_TOKEN or WHATSAPP_PHONE_ID not set on the server"
         )
-        return False
+        logger.warning(f"[WhatsApp] {info['error']} — skipping alert dispatch.")
+        return info
 
     # Normalise: strip spaces/dashes, ensure leading +
     phone = to.replace(" ", "").replace("-", "")
     if not phone.startswith("+"):
         phone = "+" + phone
+    info["phone"] = phone
 
     payload = {
         "messaging_product": "whatsapp",
@@ -141,17 +164,25 @@ async def send_whatsapp_message(to: str, text: str) -> bool:
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             r = await client.post(_GRAPH_URL, json=payload, headers=headers)
+        info["status_code"] = r.status_code
+        info["body"] = r.text[:600]
         if r.status_code == 200:
-            logger.info(f"[WhatsApp] Alert sent to {phone[:6]}***")
-            return True
+            # Log the message id so we can correlate with the Meta dashboard —
+            # a 200 does not mean the user actually received anything (test-
+            # number opt-in / 24h window can silently drop the message).
+            logger.info(
+                f"[WhatsApp] API 200 for {phone} — body: {r.text[:300]}"
+            )
+            info["ok"] = True
         else:
             logger.warning(
                 f"[WhatsApp] API returned {r.status_code} sending to {phone}: {r.text[:300]}"
             )
-            return False
+        return info
     except Exception as exc:
-        logger.error(f"[WhatsApp] Failed to send message: {exc}")
-        return False
+        info["error"] = f"{type(exc).__name__}: {exc}"
+        logger.error(f"[WhatsApp] Failed to send message to {to}: {exc}")
+        return info
 
 
 async def dispatch_news_alerts(

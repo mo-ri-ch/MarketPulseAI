@@ -75,9 +75,14 @@ async def _cron_crawler_loop():
 
             # ── Detect new articles & dispatch WhatsApp alerts ─────────────────
             try:
-                from whatsapp import dispatch_news_alerts
+                from whatsapp import dispatch_news_alerts, _is_configured as _wa_configured
                 from crawlers.sources import NIFTY50_TICKERS
 
+                if not _wa_configured():
+                    logger.warning(
+                        "[WhatsApp] Skipping dispatch — WHATSAPP_TOKEN or "
+                        "WHATSAPP_PHONE_ID env var not set on this server."
+                    )
                 _db2 = SessionLocal()
                 try:
                     # Find articles added during this crawl
@@ -88,6 +93,10 @@ async def _cron_crawler_loop():
                         .filter(models.News.id.notin_(_pre_ids))
                         .filter(models.News.is_archived == False)
                         .all()
+                    )
+                    logger.info(
+                        f"[WhatsApp] Crawl produced {len(new_rows)} new article(s) "
+                        f"(pre-crawl snapshot had {len(_pre_ids)} ids)."
                     )
 
                     if new_rows:
@@ -126,6 +135,10 @@ async def _cron_crawler_loop():
                             )
                             .all()
                         )
+                        logger.info(
+                            f"[WhatsApp] {len(users)} user(s) have alerts enabled "
+                            f"with a saved number."
+                        )
                         recipients = []
                         for u in users:
                             # Collect all tickers from all the user's watchlists
@@ -154,6 +167,12 @@ async def _cron_crawler_loop():
                                 f"to {len(recipients)} recipient(s)."
                             )
                             await dispatch_news_alerts(new_articles, recipients)
+                        else:
+                            logger.info(
+                                f"[WhatsApp] Nothing dispatched — "
+                                f"articles={len(new_articles)}, "
+                                f"recipients={len(recipients)}."
+                            )
                 finally:
                     _db2.close()
             except Exception as wa_exc:
