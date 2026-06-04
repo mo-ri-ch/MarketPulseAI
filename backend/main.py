@@ -314,6 +314,8 @@ def health_check():
             "DATABASE_URL": bool(os.getenv("DATABASE_URL")),
             "SECRET_KEY": bool(os.getenv("SECRET_KEY")),
             "SENTRY_DSN": bool(os.getenv("SENTRY_DSN")),
+            "WHATSAPP_TOKEN": bool(os.getenv("WHATSAPP_TOKEN")),
+            "WHATSAPP_PHONE_ID": bool(os.getenv("WHATSAPP_PHONE_ID")),
         },
     }
 
