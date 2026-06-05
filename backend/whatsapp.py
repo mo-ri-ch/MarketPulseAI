@@ -185,6 +185,89 @@ async def send_whatsapp_message(to: str, text: str) -> dict:
         return info
 
 
+async def send_whatsapp_template(
+    to: str,
+    template_name: str,
+    language_code: str = "en_US",
+    body_params: list[str] | None = None,
+) -> dict:
+    """
+    Send a pre-approved WhatsApp template message via Meta Cloud API.
+
+    Templates are the only reliable way to send unsolicited outbound
+    messages — they bypass the 24-hour customer-service window that
+    silently drops free-form text messages. The template must already
+    be approved in the Meta dashboard for this WhatsApp app, otherwise
+    Meta returns error 132001 ("Template name does not exist in the
+    translation").
+
+    `hello_world` (language `en_US`) is provided by Meta out-of-the-box
+    in every new app and is useful for end-to-end pipeline testing.
+
+    Returns the same diagnostic dict shape as send_whatsapp_message.
+    """
+    info = {
+        "ok": False,
+        "status_code": None,
+        "body": "",
+        "error": None,
+        "phone": to,
+        "configured": _is_configured(),
+        "graph_url": _GRAPH_URL,
+        "template": template_name,
+    }
+    if not _is_configured():
+        info["error"] = "WHATSAPP_TOKEN or WHATSAPP_PHONE_ID not set on the server"
+        logger.warning(f"[WhatsApp] {info['error']} — skipping template send.")
+        return info
+
+    phone = to.replace(" ", "").replace("-", "")
+    if not phone.startswith("+"):
+        phone = "+" + phone
+    info["phone"] = phone
+
+    template_block: dict = {
+        "name": template_name,
+        "language": {"code": language_code},
+    }
+    if body_params:
+        template_block["components"] = [{
+            "type": "body",
+            "parameters": [{"type": "text", "text": str(p)} for p in body_params],
+        }]
+
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": phone,
+        "type": "template",
+        "template": template_block,
+    }
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.post(_GRAPH_URL, json=payload, headers=headers)
+        info["status_code"] = r.status_code
+        info["body"] = r.text[:600]
+        if r.status_code == 200:
+            logger.info(
+                f"[WhatsApp] Template '{template_name}' API 200 for {phone} — body: {r.text[:300]}"
+            )
+            info["ok"] = True
+        else:
+            logger.warning(
+                f"[WhatsApp] Template '{template_name}' API {r.status_code} for {phone}: {r.text[:300]}"
+            )
+        return info
+    except Exception as exc:
+        info["error"] = f"{type(exc).__name__}: {exc}"
+        logger.error(f"[WhatsApp] Template send failed for {to}: {exc}")
+        return info
+
+
 async def dispatch_news_alerts(
     new_articles: list[dict],
     users_with_numbers: list[dict],

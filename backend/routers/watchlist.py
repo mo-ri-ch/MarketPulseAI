@@ -208,13 +208,16 @@ async def send_whatsapp_test(
     current_user: models.User = Depends(get_current_user),
 ):
     """
-    Fire a single test WhatsApp message to the authenticated user's saved
-    number and return Meta's raw response. Use this to diagnose why
-    breaking-news alerts aren't arriving — it surfaces the Graph API status
-    code + body so you can see e.g. error 131030 (recipient not in test
-    allow-list) or 131047 (outside 24-hour customer-service window).
+    Send the Meta-provided `hello_world` template to the user's saved
+    number. Templates bypass the 24-hour customer-service window that
+    silently swallows free-form text, so this should land on your phone
+    as soon as Railway redeploys — proving the API token, phone-id, and
+    recipient allow-list are all working end-to-end.
+
+    `hello_world` (en_US) is pre-approved by Meta in every new WhatsApp
+    app, so no template-creation work is required.
     """
-    from whatsapp import send_whatsapp_message
+    from whatsapp import send_whatsapp_template
 
     if not current_user.whatsapp_number:
         raise HTTPException(
@@ -222,11 +225,10 @@ async def send_whatsapp_test(
             detail="No WhatsApp number saved. Save one via PUT /user/whatsapp first.",
         )
 
-    result = await send_whatsapp_message(
+    result = await send_whatsapp_template(
         current_user.whatsapp_number,
-        "🧪 *MarketPulse AI — WhatsApp test*\n\n"
-        "If you received this, your alerts pipeline is working. "
-        "If not, check the API response in the server response.",
+        template_name="hello_world",
+        language_code="en_US",
     )
     return {
         "delivered_per_meta": result["ok"],
@@ -236,14 +238,13 @@ async def send_whatsapp_test(
         "configured": result["configured"],
         "phone_used_masked": _mask_phone(result["phone"]),
         "graph_url": result["graph_url"],
+        "template_used": result.get("template"),
         "hint": (
-            "A 200 with a messages[].id means Meta accepted the request — "
-            "it does NOT guarantee delivery. If you don't get the message: "
-            "(1) make sure your number is added as a verified recipient in "
-            "the Meta WhatsApp dashboard; (2) message your business number "
-            "from WhatsApp first to open the 24-hour window; (3) for "
-            "unsolicited outbound alerts, use a pre-approved template "
-            "(type='template') instead of free-form text."
+            "If you receive 'Hello World' on WhatsApp, your pipeline is "
+            "fully working. To send actual breaking-news alerts outside "
+            "the 24-hour window, create an approved template named "
+            "'breaking_news_alert' in the Meta dashboard and we will wire "
+            "the dispatcher to use it."
         ),
     }
 
