@@ -156,6 +156,34 @@ export default function WatchlistPanel({ onSelectStock, onPortfoliosChange }: Pr
     }
   };
 
+  const sendWhatsAppTest = async () => {
+    setWaSaving(true);
+    setWaMsg({ text: "Sending test message…", ok: true });
+    try {
+      const d = await apiJson<{
+        delivered_per_meta: boolean;
+        status_code: number | null;
+        meta_response: string;
+        error: string | null;
+      }>("/user/whatsapp/test", { method: "POST" });
+      if (d.delivered_per_meta) {
+        setWaMsg({
+          text: "✓ Test sent! Check your WhatsApp for a 'Hello World' message within ~30 seconds.",
+          ok: true,
+        });
+      } else {
+        setWaMsg({
+          text: `Meta rejected the send (status ${d.status_code ?? "n/a"}). ${d.error || d.meta_response || ""}`.slice(0, 200),
+          ok: false,
+        });
+      }
+    } catch (e: any) {
+      setWaMsg({ text: e.message || "Test failed", ok: false });
+    } finally {
+      setWaSaving(false);
+    }
+  };
+
   // Initial load: check auth then fetch lists (auto-creating a default if empty)
   useEffect(() => {
     setAuthed(isLoggedIn());
@@ -585,6 +613,20 @@ export default function WatchlistPanel({ onSelectStock, onPortfoliosChange }: Pr
                   Remove
                 </button>
               </div>
+              <button
+                onClick={sendWhatsAppTest}
+                disabled={waSaving}
+                style={{
+                  width: "100%", fontSize: 11, fontWeight: 600, padding: "6px 0",
+                  background: "rgba(37,211,102,0.1)",
+                  color: "#25D366",
+                  border: "1px solid rgba(37,211,102,0.3)", borderRadius: 6,
+                  cursor: waSaving ? "default" : "pointer",
+                  transition: "all 0.2s ease",
+                }}
+              >
+                {waSaving ? "Sending…" : "Send test message"}
+              </button>
             </div>
           )}
 
