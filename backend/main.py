@@ -51,7 +51,7 @@ def _iso_utc(dt) -> str | None:
 
 
 async def _cron_crawler_loop():
-    """Background task: crawls all sources every 10 minutes."""
+    """Background task: crawls all sources every 1 minute."""
     import logging
     global _last_crawl_at
     logger = logging.getLogger(__name__)
@@ -180,8 +180,8 @@ async def _cron_crawler_loop():
 
         except Exception as e:
             logger.error(f"[Scheduler] Error in scheduled crawl: {e}")
-        # Wait 10 minutes before next crawl
-        await asyncio.sleep(600)
+        # Wait 1 minute before next crawl
+        await asyncio.sleep(60)
 
 
 def _run_startup_db_tasks():
