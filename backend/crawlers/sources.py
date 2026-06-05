@@ -173,4 +173,7 @@ NIFTY50_TICKERS = {
     "ZOMATO":      ["Zomato"],
     "PVRINOX":     ["PVR INOX"],
     "TATACOMM":    ["Tata Communications"],
+    "TTML":        ["Tata Teleservices Maharashtra", "Tata Teleservices (Maharashtra)", "TTML"],
+    "TATAGOLD":    ["Tata Gold ETF", "Tata Gold"],
+    "TATSILV":     ["Tata Silver ETF", "Tata Silver"],
 }
