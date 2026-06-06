@@ -302,5 +302,13 @@ async def dispatch_news_alerts(
             if user_tickers and article_tickers and not user_tickers.intersection(article_tickers):
                 continue
 
-            msg = format_news_alert(article, portfolio_name=portfolio_name)
-            await send_whatsapp_message(phone, msg)
+            headline = (article.get("headline") or "").strip()
+            url = (article.get("url") or "").strip()
+            if not headline or not url:
+                continue
+            await send_whatsapp_template(
+                phone,
+                template_name="breaking_news_alert",
+                language_code="en_US",
+                body_params=[headline, url],
+            )
