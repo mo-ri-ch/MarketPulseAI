@@ -227,8 +227,12 @@ async def send_whatsapp_test(
 
     result = await send_whatsapp_template(
         current_user.whatsapp_number,
-        template_name="hello_world",
+        template_name="breaking_news_alert",
         language_code="en_US",
+        body_params=[
+            "MarketPulse AI test — Reliance Q4 profit jumps 25% YoY, beats Street estimates",
+            "https://www.moneycontrol.com/news/business/markets",
+        ],
     )
     return {
         "delivered_per_meta": result["ok"],
