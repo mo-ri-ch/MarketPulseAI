@@ -394,6 +394,20 @@ export default function PriceAlertWatcher() {
       const next = { ...triggerRef.current };
       const newToasts: Toast[] = [];
 
+      // Dedup helper: skip pushing a fresh toast if an identical one is
+      // already on screen for the same (ticker, side, threshold). The price
+      // inside that toast will update via liveQuotes, and the looping siren
+      // will already be running, so a second card adds nothing.
+      const existing = toastsRef.current;
+      const alreadyShown = (
+        ticker: string,
+        side: "above" | "below",
+        threshold: number,
+      ) =>
+        existing.some(
+          (x) => x.ticker === ticker && x.side === side && x.threshold === threshold,
+        );
+
       for (const a of alerts) {
         const q = quotes[a.ticker];
         if (!q) continue;
@@ -402,14 +416,16 @@ export default function PriceAlertWatcher() {
         // Above threshold
         if (a.above !== null) {
           if (q.value >= a.above && !state.above.triggered) {
-            newToasts.push({
-              id: toastIdRef.current++,
-              ticker: a.ticker,
-              side: "above",
-              threshold: a.above,
-              price: q.value,
-              at: Date.now(),
-            });
+            if (!alreadyShown(a.ticker, "above", a.above)) {
+              newToasts.push({
+                id: toastIdRef.current++,
+                ticker: a.ticker,
+                side: "above",
+                threshold: a.above,
+                price: q.value,
+                at: Date.now(),
+              });
+            }
             state.above = { triggered: true };
           } else if (q.value < a.above && state.above.triggered) {
             state.above = { triggered: false };
@@ -421,14 +437,16 @@ export default function PriceAlertWatcher() {
         // Below threshold
         if (a.below !== null) {
           if (q.value <= a.below && !state.below.triggered) {
-            newToasts.push({
-              id: toastIdRef.current++,
-              ticker: a.ticker,
-              side: "below",
-              threshold: a.below,
-              price: q.value,
-              at: Date.now(),
-            });
+            if (!alreadyShown(a.ticker, "below", a.below)) {
+              newToasts.push({
+                id: toastIdRef.current++,
+                ticker: a.ticker,
+                side: "below",
+                threshold: a.below,
+                price: q.value,
+                at: Date.now(),
+              });
+            }
             state.below = { triggered: true };
           } else if (q.value > a.below && state.below.triggered) {
             state.below = { triggered: false };
