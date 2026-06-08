@@ -196,6 +196,10 @@ export default function PriceAlertWatcher() {
   const [alerts, setAlerts] = useState<PriceAlert[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [muted, setMuted] = useState(false);
+  // Latest quote per ticker, mirrored from lastQuotesRef so toast bodies can
+  // re-render with the freshest "Now ₹…" value on every poll instead of
+  // freezing at the trigger-time snapshot.
+  const [liveQuotes, setLiveQuotes] = useState<Record<string, Quote>>({});
   const triggerRef = useRef<TriggerState>({});
   const mutedRef = useRef(false);
   const toastIdRef = useRef(1);
@@ -367,8 +371,10 @@ export default function PriceAlertWatcher() {
         if (res.ok && alive) {
           const data = (await res.json()) as { quotes: Record<string, Quote> };
           const quotes = data.quotes || {};
-          // Stash for the alarm loop's "still out of band?" probe.
+          // Stash for the alarm loop's "still out of band?" probe, and
+          // mirror into state so live "Now ₹…" lines in toasts re-render.
           lastQuotesRef.current = quotes;
+          setLiveQuotes(quotes);
           evaluate(quotes);
           // If a previously-violating toast's price has just returned inside
           // the band, hush the siren without waiting for the next loop tick.
@@ -537,6 +543,9 @@ export default function PriceAlertWatcher() {
       {toasts.map((t) => {
         const isAbove = t.side === "above";
         const accent = isAbove ? "#22c55e" : "#ef4444";
+        // Prefer the freshest quote so "Now ₹…" tracks the market live; fall
+        // back to the trigger-time snapshot if the next poll hasn't landed.
+        const livePrice = liveQuotes[t.ticker]?.value ?? t.price;
         return (
           <div
             key={t.id}
@@ -560,8 +569,28 @@ export default function PriceAlertWatcher() {
                 {t.ticker} {isAbove ? "crossed above" : "dropped below"} ₹
                 {t.threshold.toLocaleString("en-IN")}
               </div>
-              <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-                Now ₹{t.price.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "var(--muted)",
+                  marginTop: 2,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                }}
+              >
+                <span
+                  aria-hidden
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    background: accent,
+                    display: "inline-block",
+                    animation: "priceAlertToastDot 1.4s ease-in-out infinite",
+                  }}
+                />
+                Now ₹{livePrice.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
               </div>
             </div>
             <button
@@ -585,6 +614,10 @@ export default function PriceAlertWatcher() {
         @keyframes priceAlertSlideIn {
           from { opacity: 0; transform: translateX(20px); }
           to   { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes priceAlertToastDot {
+          0%, 100% { opacity: 1; }
+          50%      { opacity: 0.35; }
         }
       `}</style>
     </div>
