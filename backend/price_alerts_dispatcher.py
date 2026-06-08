@@ -126,7 +126,7 @@ async def dispatch_price_alerts(db: Session) -> None:
                 msg = f"{ticker} crossed above ₹{above} — Now ₹{price:.2f}"
                 result = await send_whatsapp_template(
                     user.whatsapp_number,
-                    template_name="price_alert",
+                    template_name="pulse_alert",
                     language_code="en_US",
                     body_params=[ticker, f"{above:.2f}", f"{price:.2f}"],
                 )
@@ -151,7 +151,7 @@ async def dispatch_price_alerts(db: Session) -> None:
                 msg = f"{ticker} dropped below ₹{below} — Now ₹{price:.2f}"
                 result = await send_whatsapp_template(
                     user.whatsapp_number,
-                    template_name="price_alert",
+                    template_name="pulse_alert",
                     language_code="en_US",
                     body_params=[ticker, f"{below:.2f}", f"{price:.2f}"],
                 )
