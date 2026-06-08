@@ -162,7 +162,11 @@ export default function PriceAlertSettings({ ticker, currentPrice }: Props) {
       });
       setActive({ ticker, above: res.above, below: res.below });
       // Nudge the global watcher (and other tabs) to re-pull.
+      // Cross-tab ping…
       localStorage.setItem("priceAlertsDirty", String(Date.now()));
+      // …and same-tab ping: the storage event doesn't fire in the writing
+      // tab, so use a CustomEvent to nudge the watcher in this tab.
+      window.dispatchEvent(new CustomEvent("priceAlertsDirty"));
       setOpen(false);
     } catch (e: any) {
       if (e instanceof AuthError) return;
@@ -180,7 +184,11 @@ export default function PriceAlertSettings({ ticker, currentPrice }: Props) {
       setActive({ ticker, above: null, below: null });
       setAbove("");
       setBelow("");
+      // Cross-tab ping…
       localStorage.setItem("priceAlertsDirty", String(Date.now()));
+      // …and same-tab ping: the storage event doesn't fire in the writing
+      // tab, so use a CustomEvent to nudge the watcher in this tab.
+      window.dispatchEvent(new CustomEvent("priceAlertsDirty"));
       setOpen(false);
     } catch (e: any) {
       if (e instanceof AuthError) return;

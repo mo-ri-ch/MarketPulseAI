@@ -43,7 +43,11 @@ interface Toast {
   at: number;
 }
 
-type TriggerSide = { triggered: boolean };
+// `at` records the threshold value at the time we latched. If the user later
+// changes the threshold, the stored value no longer matches the current one
+// and the latch is treated as cleared — so the freshly-saved threshold can
+// fire even if the previous one was still considered "active".
+type TriggerSide = { triggered: boolean; at: number | null };
 type TriggerState = Record<string, { above: TriggerSide; below: TriggerSide }>;
 
 function loadTriggerState(): TriggerState {
@@ -365,10 +369,16 @@ export default function PriceAlertWatcher() {
       if (e.key === "priceAlertsDirty") fetchAlerts();
     };
     window.addEventListener("storage", onStorage);
+    // Same-tab: the storage event doesn't fire for the writing tab, so the
+    // popover dispatches a CustomEvent the watcher can pick up immediately
+    // after a save/clear so the new threshold takes effect on the next tick.
+    const onDirty = () => fetchAlerts();
+    window.addEventListener("priceAlertsDirty", onDirty);
     return () => {
       clearInterval(t);
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("storage", onStorage);
+      window.removeEventListener("priceAlertsDirty", onDirty);
     };
   }, [authed, fetchAlerts]);
 
@@ -450,11 +460,20 @@ export default function PriceAlertWatcher() {
       for (const a of alerts) {
         const q = quotes[a.ticker];
         if (!q) continue;
-        const state = next[a.ticker] || { above: { triggered: false }, below: { triggered: false } };
+        const state = next[a.ticker] || {
+          above: { triggered: false, at: null },
+          below: { triggered: false, at: null },
+        };
+
+        // A latch is considered active only if it was recorded against the
+        // SAME threshold value we're currently checking. Threshold edits
+        // invalidate the latch so the new value can fire immediately.
+        const aboveLatched = state.above.triggered && state.above.at === a.above;
+        const belowLatched = state.below.triggered && state.below.at === a.below;
 
         // Above threshold
         if (a.above !== null) {
-          if (q.value >= a.above && !state.above.triggered) {
+          if (q.value >= a.above && !aboveLatched) {
             if (!alreadyShown(a.ticker, "above", a.above)) {
               newToasts.push({
                 id: toastIdRef.current++,
@@ -465,17 +484,17 @@ export default function PriceAlertWatcher() {
                 at: Date.now(),
               });
             }
-            state.above = { triggered: true };
+            state.above = { triggered: true, at: a.above };
           } else if (q.value < a.above && state.above.triggered) {
-            state.above = { triggered: false };
+            state.above = { triggered: false, at: null };
           }
         } else {
-          state.above = { triggered: false };
+          state.above = { triggered: false, at: null };
         }
 
         // Below threshold
         if (a.below !== null) {
-          if (q.value <= a.below && !state.below.triggered) {
+          if (q.value <= a.below && !belowLatched) {
             if (!alreadyShown(a.ticker, "below", a.below)) {
               newToasts.push({
                 id: toastIdRef.current++,
@@ -486,12 +505,12 @@ export default function PriceAlertWatcher() {
                 at: Date.now(),
               });
             }
-            state.below = { triggered: true };
+            state.below = { triggered: true, at: a.below };
           } else if (q.value > a.below && state.below.triggered) {
-            state.below = { triggered: false };
+            state.below = { triggered: false, at: null };
           }
         } else {
-          state.below = { triggered: false };
+          state.below = { triggered: false, at: null };
         }
 
         next[a.ticker] = state;
