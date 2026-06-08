@@ -231,14 +231,14 @@ async def send_whatsapp_test(
             detail="No WhatsApp number saved. Save one via PUT /user/whatsapp first.",
         )
 
+    # Use the same 3-param `price_alert` Utility template that the price-alerts
+    # dispatcher uses, so the smoke test reflects what real alerts will look
+    # like on the user's phone.
     result = await send_whatsapp_template(
         current_user.whatsapp_number,
-        template_name="breaking_news_alert",
+        template_name="price_alert",
         language_code="en_US",
-        body_params=[
-            "MarketPulse AI test — Reliance Q4 profit jumps 25% YoY, beats Street estimates",
-            "https://www.moneycontrol.com/news/business/markets",
-        ],
+        body_params=["TATASTEEL", "202.90", "202.50"],
     )
     return {
         "delivered_per_meta": result["ok"],
@@ -250,11 +250,11 @@ async def send_whatsapp_test(
         "graph_url": result["graph_url"],
         "template_used": result.get("template"),
         "hint": (
-            "If you receive 'Hello World' on WhatsApp, your pipeline is "
-            "fully working. To send actual breaking-news alerts outside "
-            "the 24-hour window, create an approved template named "
-            "'breaking_news_alert' in the Meta dashboard and we will wire "
-            "the dispatcher to use it."
+            "If you receive a TATASTEEL price-alert preview, your pipeline is "
+            "working. Make sure the `price_alert` template (Utility, en_US) "
+            "is Approved in the Meta dashboard with the body: "
+            "'Price alert for {{1}}. Your alert threshold of ₹{{2}} was "
+            "crossed. Current price: ₹{{3}}.'"
         ),
     }
 

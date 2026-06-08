@@ -72,11 +72,6 @@ async def _fetch_price(client: httpx.AsyncClient, ticker: str) -> float | None:
         return None
 
 
-def _quote_url(ticker: str) -> str:
-    """Public chart URL for the WhatsApp template's {{2}} parameter."""
-    return f"https://www.google.com/finance/quote/{ticker}:NSE"
-
-
 async def dispatch_price_alerts(db: Session) -> None:
     """Evaluate all active PRICE_WEB alerts and fire WhatsApp on fresh crossings."""
     if not _wa_configured():
@@ -131,9 +126,9 @@ async def dispatch_price_alerts(db: Session) -> None:
                 msg = f"{ticker} crossed above ₹{above} — Now ₹{price:.2f}"
                 result = await send_whatsapp_template(
                     user.whatsapp_number,
-                    template_name="breaking_news_alert",
+                    template_name="price_alert",
                     language_code="en_US",
-                    body_params=[msg, _quote_url(ticker)],
+                    body_params=[ticker, f"{above:.2f}", f"{price:.2f}"],
                 )
                 logger.info(
                     f"[PriceAlerts/WA] {msg} → ok={result.get('ok')} "
@@ -156,9 +151,9 @@ async def dispatch_price_alerts(db: Session) -> None:
                 msg = f"{ticker} dropped below ₹{below} — Now ₹{price:.2f}"
                 result = await send_whatsapp_template(
                     user.whatsapp_number,
-                    template_name="breaking_news_alert",
+                    template_name="price_alert",
                     language_code="en_US",
-                    body_params=[msg, _quote_url(ticker)],
+                    body_params=[ticker, f"{below:.2f}", f"{price:.2f}"],
                 )
                 logger.info(
                     f"[PriceAlerts/WA] {msg} → ok={result.get('ok')} "
