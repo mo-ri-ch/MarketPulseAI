@@ -211,6 +211,7 @@ def delete_whatsapp_settings(
 
 @router.post("/user/whatsapp/test")
 async def send_whatsapp_test(
+    template: str = "pulse_alert",
     current_user: models.User = Depends(get_current_user),
 ):
     """
@@ -231,14 +232,21 @@ async def send_whatsapp_test(
             detail="No WhatsApp number saved. Save one via PUT /user/whatsapp first.",
         )
 
-    # Use the same 3-param `pulse_alert` Utility template that the price-alerts
-    # dispatcher uses, so the smoke test reflects what real alerts will look
-    # like on the user's phone.
+    # Default: send a preview of the real `pulse_alert` template. Override
+    # with ?template=hello_world to fire Meta's pre-approved built-in
+    # template — useful for diagnosing whether the pipeline (token,
+    # phone ID, recipient allowlist) is healthy independent of your own
+    # template-approval status.
+    if template == "hello_world":
+        body_params = None  # hello_world takes no body params
+    else:
+        body_params = ["TATASTEEL", "202.90", "202.50"]
+
     result = await send_whatsapp_template(
         current_user.whatsapp_number,
-        template_name="pulse_alert",
+        template_name=template,
         language_code="en_US",
-        body_params=["TATASTEEL", "202.90", "202.50"],
+        body_params=body_params,
     )
     return {
         "delivered_per_meta": result["ok"],
