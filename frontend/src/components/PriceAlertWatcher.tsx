@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { X, Bell } from "lucide-react";
+import { X, Bell, Volume2, VolumeX } from "lucide-react";
 import { apiJson, isLoggedIn, AuthError } from "@/lib/api";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const ALERTS_POLL_MS = 30_000;
 const QUOTES_POLL_MS = 10_000;
 const TRIGGER_STATE_KEY = "priceAlertsTriggered";
+const MUTED_KEY = "priceAlertsSoundMuted";
 
 interface PriceAlert {
   ticker: string;
@@ -54,6 +55,53 @@ function saveTriggerState(s: TriggerState) {
 }
 
 /**
+ * Generate a short two-tone beep with the Web Audio API. No audio asset
+ * needed. The "above" cue rises, the "below" cue falls — gives the user a
+ * directional hint before they even read the toast.
+ *
+ * Browsers block AudioContext creation until a user gesture has happened on
+ * the page; we cache the context on `window` so the first armed user-click
+ * (saving an alert, dismissing a toast, etc.) unlocks it for later auto-plays.
+ */
+function playBeep(side: "above" | "below") {
+  if (typeof window === "undefined") return;
+  try {
+    const w = window as unknown as {
+      __priceAlertAudio?: AudioContext;
+      AudioContext: typeof AudioContext;
+      webkitAudioContext?: typeof AudioContext;
+    };
+    const Ctor = w.AudioContext || w.webkitAudioContext;
+    if (!Ctor) return;
+    if (!w.__priceAlertAudio) w.__priceAlertAudio = new Ctor();
+    const ctx = w.__priceAlertAudio;
+    if (ctx.state === "suspended") ctx.resume().catch(() => {});
+
+    const now = ctx.currentTime;
+    const [f1, f2] = side === "above" ? [660, 990] : [660, 415];
+    const tones: Array<[number, number]> = [
+      [f1, now],
+      [f2, now + 0.14],
+    ];
+    for (const [freq, start] of tones) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, start);
+      // Quick attack/decay envelope so it sounds like a chime, not a buzz.
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.18, start + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.13);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.16);
+    }
+  } catch {
+    // Audio not available — silently fall back to visual-only.
+  }
+}
+
+/**
  * Global watcher: polls the user's per-stock thresholds + live quotes and
  * renders dismissable toasts whenever a stock's price crosses one of its
  * configured boundaries. Lives in the root layout so the alerts stay visible
@@ -70,7 +118,9 @@ export default function PriceAlertWatcher() {
   const [authed, setAuthed] = useState(false);
   const [alerts, setAlerts] = useState<PriceAlert[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [muted, setMuted] = useState(false);
   const triggerRef = useRef<TriggerState>({});
+  const mutedRef = useRef(false);
   const toastIdRef = useRef(1);
 
   // Pick up auth state once on mount. The login flow does a full page nav so a
@@ -78,7 +128,23 @@ export default function PriceAlertWatcher() {
   useEffect(() => {
     setAuthed(isLoggedIn());
     triggerRef.current = loadTriggerState();
+    const m = localStorage.getItem(MUTED_KEY) === "1";
+    setMuted(m);
+    mutedRef.current = m;
   }, []);
+
+  const toggleMute = () => {
+    const next = !mutedRef.current;
+    mutedRef.current = next;
+    setMuted(next);
+    try {
+      localStorage.setItem(MUTED_KEY, next ? "1" : "0");
+    } catch {
+      // ignore
+    }
+    // Play a tiny confirmation tone when *un*muting so the user knows it works.
+    if (!next) playBeep("above");
+  };
 
   // Poll the user's configured alerts. Only one in-flight request at a time.
   const fetchAlerts = useCallback(async () => {
@@ -206,6 +272,13 @@ export default function PriceAlertWatcher() {
 
       if (newToasts.length > 0) {
         setToasts((prev) => [...prev, ...newToasts]);
+        // Audio cue — one beep per side present in this batch, so a multi-stock
+        // crossing doesn't pile up into a noisy cascade.
+        if (!mutedRef.current) {
+          const sides = new Set(newToasts.map((t) => t.side));
+          if (sides.has("above")) playBeep("above");
+          if (sides.has("below")) playBeep("below");
+        }
         // Best-effort browser notification — works if the page is in another tab.
         if (typeof window !== "undefined" && "Notification" in window) {
           if (Notification.permission === "granted") {
@@ -240,7 +313,8 @@ export default function PriceAlertWatcher() {
   const dismiss = (id: number) =>
     setToasts((prev) => prev.filter((t) => t.id !== id));
 
-  if (!authed || toasts.length === 0) return null;
+  const hasArmed = alerts.some((a) => a.above != null || a.below != null);
+  if (!authed || (!hasArmed && toasts.length === 0)) return null;
 
   return (
     <div
@@ -253,8 +327,30 @@ export default function PriceAlertWatcher() {
         flexDirection: "column",
         gap: 8,
         maxWidth: 340,
+        alignItems: "flex-end",
       }}
     >
+      {hasArmed && (
+        <button
+          onClick={toggleMute}
+          title={muted ? "Unmute alert sound" : "Mute alert sound"}
+          style={{
+            background: "var(--bg)",
+            border: "1px solid var(--border)",
+            borderRadius: 999,
+            width: 30,
+            height: 30,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            color: muted ? "var(--muted)" : "var(--fg)",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.10)",
+          }}
+        >
+          {muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+        </button>
+      )}
       {toasts.map((t) => {
         const isAbove = t.side === "above";
         const accent = isAbove ? "#22c55e" : "#ef4444";
