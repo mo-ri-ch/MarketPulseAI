@@ -15,7 +15,6 @@ const ALERTS_POLL_MS = 30_000;
 // the market as tightly as the chart does.
 const QUOTES_POLL_MS = 1_000;
 const TRIGGER_STATE_KEY = "priceAlertsTriggered";
-const MUTED_KEY = "priceAlertsSoundMuted";
 // The siren itself is ~1.6s long. Loop slightly slower so each iteration has
 // a brief gap, like a real alarm-clock cadence.
 const ALARM_LOOP_MS = 1800;
@@ -39,6 +38,9 @@ interface Toast {
   ticker: string;
   side: "above" | "below";
   threshold: number;
+  // Per-toast mute: silencing one toast doesn't silence any other ongoing
+  // alarms. New toasts default to false (audible).
+  muted: boolean;
   price: number;
   at: number;
 }
@@ -59,7 +61,12 @@ type TriggerState = Record<string, { above: TriggerSide; below: TriggerSide }>;
 // from a previous build is cleared on first mount so it can't sneak back.
 const _legacyClear = () => {
   if (typeof window === "undefined") return;
-  try { localStorage.removeItem(TRIGGER_STATE_KEY); } catch { /* ignore */ }
+  try {
+    localStorage.removeItem(TRIGGER_STATE_KEY);
+    // Old global-mute preference is no longer honoured — per-toast mute
+    // replaced it. Sweep the orphaned key so future builds don't read it.
+    localStorage.removeItem("priceAlertsSoundMuted");
+  } catch { /* ignore */ }
 };
 
 function getAudioContext(): AudioContext | null {
@@ -169,27 +176,6 @@ export function playAlarm(side: "above" | "below") {
   }
 }
 
-/** Short single chirp used only to confirm an unmute action. */
-function playConfirm() {
-  const ctx = getAudioContext();
-  if (!ctx) return;
-  try {
-    const start = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(880, start);
-    gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(0.15, start + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.12);
-    osc.connect(gain).connect(ctx.destination);
-    osc.start(start);
-    osc.stop(start + 0.14);
-  } catch {
-    // ignore
-  }
-}
-
 /**
  * Global watcher: polls the user's per-stock thresholds + live quotes and
  * renders dismissable toasts whenever a stock's price crosses one of its
@@ -217,7 +203,6 @@ export default function PriceAlertWatcher() {
   const [authed, setAuthed] = useState(false);
   const [alerts, setAlerts] = useState<PriceAlert[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [muted, setMuted] = useState(false);
   // Latest quote per ticker, mirrored from lastQuotesRef so toast bodies can
   // re-render with the freshest "Now ₹…" value on every poll instead of
   // freezing at the trigger-time snapshot. Also picks up the shared store's
@@ -226,7 +211,6 @@ export default function PriceAlertWatcher() {
   const storeVersion = useQuoteVersion();
   const [audioUnlocked, setAudioUnlocked] = useState<boolean>(() => isAudioUnlocked());
   const triggerRef = useRef<TriggerState>({});
-  const mutedRef = useRef(false);
   const toastIdRef = useRef(1);
   // Continuous-alarm bookkeeping. The loop keeps blasting the siren every
   // ALARM_LOOP_MS while at least one on-screen toast is still violating its
@@ -268,6 +252,7 @@ export default function PriceAlertWatcher() {
     const alerts = alertsRef.current;
     let activeSide: "above" | "below" | null = null;
     for (const t of ts) {
+      if (t.muted) continue; // per-toast mute silences just this toast's contribution
       const a = alerts.find((x) => x.ticker === t.ticker);
       if (!a) continue;
       const fresh = getQuoteSnapshot(t.ticker);
@@ -283,19 +268,16 @@ export default function PriceAlertWatcher() {
   }, []);
 
   const startAlarmLoop = useCallback(() => {
-    if (mutedRef.current) return;
     if (alarmTimerRef.current) return;
     const { active, side } = isAnyConditionActive();
+    // isAnyConditionActive already skips muted toasts, so this naturally
+    // honours each notification's per-toast mute setting.
     if (!active) return;
     if (side) lastSideRef.current = side;
     // First blast immediately so the user hears something the instant the
     // toast appears — the interval handles every loop after that.
     playAlarm(lastSideRef.current);
     alarmTimerRef.current = setInterval(() => {
-      if (mutedRef.current) {
-        stopAlarmLoop();
-        return;
-      }
       const { active: stillActive, side: currentSide } = isAnyConditionActive();
       if (!stillActive) {
         // Price has returned inside the band for every on-screen toast — go
@@ -327,9 +309,6 @@ export default function PriceAlertWatcher() {
     // threshold had fired in an earlier session.
     triggerRef.current = {};
     _legacyClear();
-    const m = localStorage.getItem(MUTED_KEY) === "1";
-    setMuted(m);
-    mutedRef.current = m;
     // Audio is silently blocked by the browser until the user has interacted
     // with the page. Wire up a one-shot unlock so the first click anywhere
     // primes the AudioContext for later automatic alarms.
@@ -341,7 +320,9 @@ export default function PriceAlertWatcher() {
   useEffect(() => {
     const onUnlock = () => {
       setAudioUnlocked(true);
-      if (toastsRef.current.length > 0 && !mutedRef.current) {
+      // If any unmuted toast is still violating, restart the loop so the
+      // siren plays immediately now that audio is unlocked.
+      if (toastsRef.current.length > 0) {
         stopAlarmLoop();
         startAlarmLoop();
       }
@@ -349,26 +330,6 @@ export default function PriceAlertWatcher() {
     window.addEventListener("priceAlertAudioUnlocked", onUnlock);
     return () => window.removeEventListener("priceAlertAudioUnlocked", onUnlock);
   }, [startAlarmLoop, stopAlarmLoop]);
-
-  const toggleMute = () => {
-    const next = !mutedRef.current;
-    mutedRef.current = next;
-    setMuted(next);
-    try {
-      localStorage.setItem(MUTED_KEY, next ? "1" : "0");
-    } catch {
-      // ignore
-    }
-    if (next) {
-      // Mute click is the user's explicit "stop the racket" gesture.
-      stopAlarmLoop();
-    } else {
-      playConfirm();
-      // If there are still active toasts, resume the looping siren —
-      // unmute should re-arm the alarm, not just allow future events.
-      if (toasts.length > 0) startAlarmLoop();
-    }
-  };
 
   // Poll the user's configured alerts. Only one in-flight request at a time.
   const fetchAlerts = useCallback(async () => {
@@ -517,6 +478,7 @@ export default function PriceAlertWatcher() {
                 threshold: a.above,
                 price: q.value,
                 at: Date.now(),
+                muted: false,
               });
             }
             state.above = { triggered: true, at: a.above };
@@ -539,6 +501,7 @@ export default function PriceAlertWatcher() {
                 threshold: a.below,
                 price: q.value,
                 at: Date.now(),
+                muted: false,
               });
             }
             state.below = { triggered: true, at: a.below };
@@ -618,6 +581,23 @@ export default function PriceAlertWatcher() {
       return remaining;
     });
 
+  const toggleToastMute = (id: number) =>
+    setToasts((prev) => {
+      const next = prev.map((t) => (t.id === id ? { ...t, muted: !t.muted } : t));
+      // Sync ref synchronously so the alarm-state probe below sees the new
+      // mute flag without waiting for the next render.
+      toastsRef.current = next;
+      const { active } = isAnyConditionActive();
+      if (active && !alarmTimerRef.current) {
+        // User just un-muted a still-violating toast and no siren is running.
+        startAlarmLoop();
+      } else if (!active) {
+        // All remaining unmuted toasts are inside the band — quiet down.
+        stopAlarmLoop();
+      }
+      return next;
+    });
+
   // Cleanly stop the interval when the watcher unmounts (e.g. logout).
   useEffect(() => stopAlarmLoop, [stopAlarmLoop]);
 
@@ -659,27 +639,6 @@ export default function PriceAlertWatcher() {
           }}
         >
           <Volume2 size={14} /> Click to enable alarm sound
-        </button>
-      )}
-      {hasArmed && (
-        <button
-          onClick={toggleMute}
-          title={muted ? "Unmute alert sound" : "Mute alert sound"}
-          style={{
-            background: "var(--bg)",
-            border: "1px solid var(--border)",
-            borderRadius: 999,
-            width: 30,
-            height: 30,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-            color: muted ? "var(--muted)" : "var(--fg)",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.10)",
-          }}
-        >
-          {muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
         </button>
       )}
       {toasts.map((t) => {
@@ -747,19 +706,19 @@ export default function PriceAlertWatcher() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
               <button
-                onClick={toggleMute}
-                aria-label={muted ? "Unmute alarm sound" : "Mute alarm sound"}
-                title={muted ? "Unmute alarm sound" : "Mute alarm sound"}
+                onClick={() => toggleToastMute(t.id)}
+                aria-label={t.muted ? "Unmute this alarm" : "Mute this alarm"}
+                title={t.muted ? "Unmute this alarm" : "Mute this alarm"}
                 style={{
                   background: "none",
                   border: "none",
                   cursor: "pointer",
-                  color: muted ? "var(--muted)" : "var(--fg)",
+                  color: t.muted ? "var(--muted)" : "var(--fg)",
                   padding: 2,
                   display: "flex",
                 }}
               >
-                {muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                {t.muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
               </button>
               <button
                 onClick={() => dismiss(t.id)}
