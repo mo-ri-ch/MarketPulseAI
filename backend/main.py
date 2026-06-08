@@ -233,6 +233,25 @@ def _run_startup_db_tasks():
         logging.getLogger(__name__).warning(f"[Startup] Index creation failed: {e}")
 
 
+async def _price_alerts_loop():
+    """Evaluate in-page price alerts (PRICE_WEB) every 30 s and fire WhatsApp."""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info("[PriceAlerts/WA] Dispatch loop started.")
+    while True:
+        try:
+            from price_alerts_dispatcher import dispatch_price_alerts
+            from database import SessionLocal
+            db = SessionLocal()
+            try:
+                await dispatch_price_alerts(db)
+            finally:
+                db.close()
+        except Exception as e:
+            logger.warning(f"[PriceAlerts/WA] Dispatch error (non-fatal): {e}")
+        await asyncio.sleep(30)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Async lifespan handler — runs in the event loop so create_task works correctly."""
@@ -240,13 +259,17 @@ async def lifespan(app: FastAPI):
     _run_startup_db_tasks()
     # Kick off the 24/7 crawler loop as a proper async background task
     task = asyncio.create_task(_cron_crawler_loop())
+    # Separate, faster loop just for price-threshold WhatsApp alerts.
+    price_task = asyncio.create_task(_price_alerts_loop())
     yield
-    # Graceful shutdown: cancel the crawler loop
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+    # Graceful shutdown: cancel both loops
+    for t in (task, price_task):
+        t.cancel()
+    for t in (task, price_task):
+        try:
+            await t
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(title="Market Pulse AI Backend", lifespan=lifespan)
