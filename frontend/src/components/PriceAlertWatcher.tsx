@@ -84,32 +84,48 @@ function getAudioContext(): AudioContext | null {
  * (which has no gesture of its own) can play without the autoplay policy
  * silently swallowing it.
  */
+const AUDIO_UNLOCK_FLAG = "__priceAlertAudioUnlocked";
+const AUDIO_UNLOCK_EVENT = "priceAlertAudioUnlocked";
+
+export function isAudioUnlocked(): boolean {
+  if (typeof window === "undefined") return false;
+  return Boolean((window as unknown as Record<string, unknown>)[AUDIO_UNLOCK_FLAG]);
+}
+
+/** Resume the AudioContext and mark it as unlocked. Idempotent. */
+export function unlockAudio() {
+  if (typeof window === "undefined") return;
+  const w = window as unknown as Record<string, unknown>;
+  if (w[AUDIO_UNLOCK_FLAG]) return;
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  try {
+    const buf = ctx.createBuffer(1, 1, 22050);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start(0);
+  } catch {
+    // ignore
+  }
+  w[AUDIO_UNLOCK_FLAG] = true;
+  // Tell the watcher to drop its "audio blocked" banner and immediately
+  // play whatever alarm is currently meant to be sounding.
+  window.dispatchEvent(new CustomEvent(AUDIO_UNLOCK_EVENT));
+}
+
 export function installAudioUnlock() {
   if (typeof window === "undefined") return;
-  const flagKey = "__priceAlertAudioUnlocked";
-  const w = window as unknown as Record<string, unknown>;
-  if (w[flagKey]) return;
-  const unlock = () => {
-    const ctx = getAudioContext();
-    if (!ctx) return;
-    // A single silent buffer play is the safest way to fully unlock iOS Safari.
-    try {
-      const buf = ctx.createBuffer(1, 1, 22050);
-      const src = ctx.createBufferSource();
-      src.buffer = buf;
-      src.connect(ctx.destination);
-      src.start(0);
-    } catch {
-      // ignore
-    }
-    w[flagKey] = true;
-    window.removeEventListener("pointerdown", unlock);
-    window.removeEventListener("keydown", unlock);
-    window.removeEventListener("touchstart", unlock);
+  if (isAudioUnlocked()) return;
+  const handler = () => {
+    unlockAudio();
+    window.removeEventListener("pointerdown", handler);
+    window.removeEventListener("keydown", handler);
+    window.removeEventListener("touchstart", handler);
   };
-  window.addEventListener("pointerdown", unlock, { once: false });
-  window.addEventListener("keydown", unlock, { once: false });
-  window.addEventListener("touchstart", unlock, { once: false });
+  window.addEventListener("pointerdown", handler, { once: false });
+  window.addEventListener("keydown", handler, { once: false });
+  window.addEventListener("touchstart", handler, { once: false });
 }
 
 /**
@@ -208,6 +224,7 @@ export default function PriceAlertWatcher() {
   // version so re-renders fire whenever the chart publishes a fresher value.
   const [liveQuotes, setLiveQuotes] = useState<Record<string, Quote>>({});
   const storeVersion = useQuoteVersion();
+  const [audioUnlocked, setAudioUnlocked] = useState<boolean>(() => isAudioUnlocked());
   const triggerRef = useRef<TriggerState>({});
   const mutedRef = useRef(false);
   const toastIdRef = useRef(1);
@@ -318,6 +335,20 @@ export default function PriceAlertWatcher() {
     // primes the AudioContext for later automatic alarms.
     installAudioUnlock();
   }, []);
+
+  // Drop the "click to enable sound" banner the moment audio unlocks, and
+  // immediately (re-)play the alarm if a toast was already begging for it.
+  useEffect(() => {
+    const onUnlock = () => {
+      setAudioUnlocked(true);
+      if (toastsRef.current.length > 0 && !mutedRef.current) {
+        stopAlarmLoop();
+        startAlarmLoop();
+      }
+    };
+    window.addEventListener("priceAlertAudioUnlocked", onUnlock);
+    return () => window.removeEventListener("priceAlertAudioUnlocked", onUnlock);
+  }, [startAlarmLoop, stopAlarmLoop]);
 
   const toggleMute = () => {
     const next = !mutedRef.current;
@@ -599,6 +630,29 @@ export default function PriceAlertWatcher() {
         alignItems: "flex-end",
       }}
     >
+      {hasArmed && !audioUnlocked && (
+        <button
+          onClick={unlockAudio}
+          title="Click to enable alarm sound on this page"
+          style={{
+            background: "#f59e0b",
+            color: "#000",
+            border: "none",
+            borderRadius: 8,
+            padding: "8px 12px",
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            boxShadow: "0 8px 24px rgba(245,158,11,0.35)",
+            animation: "priceAlertSlideIn 0.25s ease-out",
+          }}
+        >
+          <Volume2 size={14} /> Click to enable alarm sound
+        </button>
+      )}
       {hasArmed && (
         <button
           onClick={toggleMute}
