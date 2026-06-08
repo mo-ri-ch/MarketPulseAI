@@ -50,23 +50,17 @@ interface Toast {
 type TriggerSide = { triggered: boolean; at: number | null };
 type TriggerState = Record<string, { above: TriggerSide; below: TriggerSide }>;
 
-function loadTriggerState(): TriggerState {
-  if (typeof window === "undefined") return {};
-  try {
-    return JSON.parse(localStorage.getItem(TRIGGER_STATE_KEY) || "{}");
-  } catch {
-    return {};
-  }
-}
-
-function saveTriggerState(s: TriggerState) {
+// Trigger latches used to live in localStorage to dedupe alerts across page
+// navigations, but persisting "already triggered" turned out to defeat the
+// user's expectation that opening the page with an active out-of-band
+// condition should immediately re-alert. We now keep the latch in memory
+// only — refreshing the page is a clean slate, so every still-violating
+// threshold fires a fresh toast on load. The localStorage entry (if any)
+// from a previous build is cleared on first mount so it can't sneak back.
+const _legacyClear = () => {
   if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(TRIGGER_STATE_KEY, JSON.stringify(s));
-  } catch {
-    // ignore quota errors
-  }
-}
+  try { localStorage.removeItem(TRIGGER_STATE_KEY); } catch { /* ignore */ }
+};
 
 function getAudioContext(): AudioContext | null {
   if (typeof window === "undefined") return null;
@@ -187,11 +181,12 @@ function playConfirm() {
  * regardless of which page the user is on.
  *
  * Re-trigger semantics:
- *   - Each (ticker, side) latches once it fires — the toast does not repeat
- *     every poll while the price stays out-of-band.
- *   - The latch clears as soon as the price returns inside the band, so the
- *     next crossing re-alerts.
- *   - Latch state is persisted to localStorage so navigation doesn't reset it.
+ *   - Each (ticker, side, threshold) latches once it fires — the toast does
+ *     not repeat every poll while the price stays out-of-band.
+ *   - The latch clears as soon as the price returns inside the band, OR when
+ *     the user edits the threshold (we key the latch by threshold value).
+ *   - Latches are session-only — refreshing the page wipes them so any
+ *     still-violating threshold fires a fresh toast on load.
  *
  * Sound:
  *   - The siren loops as long as at least one on-screen toast is still
@@ -310,7 +305,11 @@ export default function PriceAlertWatcher() {
   // remount is enough to re-evaluate.
   useEffect(() => {
     setAuthed(isLoggedIn());
-    triggerRef.current = loadTriggerState();
+    // Start with a fresh in-memory latch on every page load so any still-
+    // violating threshold immediately fires a toast, even if the same
+    // threshold had fired in an earlier session.
+    triggerRef.current = {};
+    _legacyClear();
     const m = localStorage.getItem(MUTED_KEY) === "1";
     setMuted(m);
     mutedRef.current = m;
@@ -523,7 +522,6 @@ export default function PriceAlertWatcher() {
       }
 
       triggerRef.current = next;
-      saveTriggerState(next);
 
       if (newToasts.length > 0) {
         // Update the ref synchronously BEFORE startAlarmLoop runs. The loop's
