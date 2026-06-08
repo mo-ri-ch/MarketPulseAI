@@ -73,110 +73,11 @@ async def _cron_crawler_loop():
             _last_crawl_at = datetime.utcnow()
             logger.info("[Scheduler] Scheduled news crawl complete.")
 
-            # ── Detect new articles & dispatch WhatsApp alerts ─────────────────
-            try:
-                from whatsapp import dispatch_news_alerts, _is_configured as _wa_configured
-                from crawlers.sources import NIFTY50_TICKERS
-
-                if not _wa_configured():
-                    logger.warning(
-                        "[WhatsApp] Skipping dispatch — WHATSAPP_TOKEN or "
-                        "WHATSAPP_PHONE_ID env var not set on this server."
-                    )
-                _db2 = SessionLocal()
-                try:
-                    # Find articles added during this crawl
-                    new_rows = (
-                        _db2.query(models.News, models.Source, models.SentimentScore)
-                        .outerjoin(models.Source, models.Source.id == models.News.source_id)
-                        .outerjoin(models.SentimentScore, models.SentimentScore.news_id == models.News.id)
-                        .filter(models.News.id.notin_(_pre_ids))
-                        .filter(models.News.is_archived == False)
-                        .all()
-                    )
-                    logger.info(
-                        f"[WhatsApp] Crawl produced {len(new_rows)} new article(s) "
-                        f"(pre-crawl snapshot had {len(_pre_ids)} ids)."
-                    )
-
-                    if new_rows:
-                        # Build article dicts with ticker matching
-                        import re
-                        new_articles = []
-                        for news, source, sentiment in new_rows:
-                            # Find which tickers this headline mentions
-                            matched_tickers = []
-                            if news.headline:
-                                for ticker, aliases in NIFTY50_TICKERS.items():
-                                    for alias in aliases:
-                                        if len(alias) >= 3 and re.search(
-                                            r"(?i)\b" + re.escape(alias) + r"\b",
-                                            news.headline,
-                                        ):
-                                            matched_tickers.append(ticker)
-                                            break
-                            new_articles.append({
-                                "headline": news.headline,
-                                "url": news.url,
-                                "source": source.name if source else None,
-                                "sentiment": {
-                                    "positive": sentiment.positive if sentiment else 0,
-                                    "negative": sentiment.negative if sentiment else 0,
-                                } if sentiment else None,
-                                "tickers_matched": matched_tickers,
-                            })
-
-                        # Build per-user recipient list (users with WhatsApp enabled)
-                        users = (
-                            _db2.query(models.User)
-                            .filter(
-                                models.User.whatsapp_alerts_enabled == True,
-                                models.User.whatsapp_number.isnot(None),
-                            )
-                            .all()
-                        )
-                        logger.info(
-                            f"[WhatsApp] {len(users)} user(s) have alerts enabled "
-                            f"with a saved number."
-                        )
-                        recipients = []
-                        for u in users:
-                            # Collect all tickers from all the user's watchlists
-                            watchlists = (
-                                _db2.query(models.Watchlist)
-                                .filter(models.Watchlist.user_id == u.id)
-                                .all()
-                            )
-                            all_tickers = []
-                            for wl in watchlists:
-                                all_tickers += [
-                                    s.strip().upper()
-                                    for s in (wl.stocks or "").split(",")
-                                    if s.strip()
-                                ]
-                            portfolio_name = watchlists[0].name if watchlists else None
-                            recipients.append({
-                                "whatsapp_number": u.whatsapp_number,
-                                "tickers": all_tickers,
-                                "portfolio_name": portfolio_name,
-                            })
-
-                        if new_articles and recipients:
-                            logger.info(
-                                f"[WhatsApp] Dispatching {len(new_articles)} new articles "
-                                f"to {len(recipients)} recipient(s)."
-                            )
-                            await dispatch_news_alerts(new_articles, recipients)
-                        else:
-                            logger.info(
-                                f"[WhatsApp] Nothing dispatched — "
-                                f"articles={len(new_articles)}, "
-                                f"recipients={len(recipients)}."
-                            )
-                finally:
-                    _db2.close()
-            except Exception as wa_exc:
-                logger.warning(f"[WhatsApp] Alert dispatch error (non-fatal): {wa_exc}")
+            # News-article WhatsApp dispatch is intentionally disabled: news
+            # alerts are inherently informational and Meta classifies them as
+            # Marketing, which costs per message and is throttled. Stock-
+            # threshold WhatsApp alerts (the dedicated _price_alerts_loop)
+            # remain fully active since those are textbook Utility content.
 
         except Exception as e:
             logger.error(f"[Scheduler] Error in scheduled crawl: {e}")
