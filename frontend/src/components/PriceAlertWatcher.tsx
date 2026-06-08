@@ -684,13 +684,20 @@ export default function PriceAlertWatcher() {
       )}
       {toasts.map((t) => {
         const isAbove = t.side === "above";
-        const accent = isAbove ? "#22c55e" : "#ef4444";
         // Read from the shared quoteStore first — the chart publishes there
-        // at its faster 2s cadence, keeping this number in lock-step with
+        // at its faster cadence, keeping this number in lock-step with
         // whatever the chart is showing. Falls back to the watcher's own
         // 10s poll if no fresher value exists.
         const storeSnap = getQuoteSnapshot(t.ticker);
         const livePrice = storeSnap?.value ?? liveQuotes[t.ticker]?.value ?? t.price;
+        // Outline tracks the LIVE condition, not the trigger event:
+        //   green  → price is still on the wrong side of the threshold
+        //            (the alarm condition is currently being violated)
+        //   red    → price has returned inside the band, situation cleared
+        const isCurrentlyViolating = isAbove
+          ? livePrice >= t.threshold
+          : livePrice <= t.threshold;
+        const accent = isCurrentlyViolating ? "#22c55e" : "#ef4444";
         return (
           <div
             key={t.id}
