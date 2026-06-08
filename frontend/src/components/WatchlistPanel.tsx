@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { apiJson, isLoggedIn, AuthError } from "@/lib/api";
 import { getQuoteSnapshot, publishQuotes, useQuoteVersion } from "@/lib/quoteStore";
@@ -85,111 +85,8 @@ export default function WatchlistPanel({ onSelectStock, onPortfoliosChange }: Pr
   // polling effect doesn't re-fetch on every render.
   const tickersKeyRef = useRef<string>("");
 
-  // ── WhatsApp alert state ─────────────────────────────────────────────────
-  const [waConfigured, setWaConfigured]   = useState(false);
-  const [waMasked, setWaMasked]           = useState("");
-  const [waEnabled, setWaEnabled]         = useState(false);
-  const [waPhone, setWaPhone]             = useState("");
-  const [waEditing, setWaEditing]         = useState(false);
-  const [waSaving, setWaSaving]           = useState(false);
-  const [waMsg, setWaMsg]                 = useState<{ text: string; ok: boolean } | null>(null);
-
-  const loadWhatsAppSettings = useCallback(async () => {
-    try {
-      const d = await apiJson<{ configured: boolean; phone_number_masked: string; enabled: boolean }>(
-        "/user/whatsapp"
-      );
-      setWaConfigured(d.configured);
-      setWaMasked(d.phone_number_masked);
-      setWaEnabled(d.enabled);
-    } catch {
-      // Not critical — silently ignore
-    }
-  }, []);
-
-  const saveWhatsApp = async () => {
-    const phone = waPhone.trim();
-    if (!phone) return;
-    setWaSaving(true);
-    setWaMsg(null);
-    try {
-      const d = await apiJson<{ configured: boolean; phone_number_masked: string; enabled: boolean; message: string }>(
-        "/user/whatsapp",
-        { method: "PUT", body: JSON.stringify({ phone_number: phone, enabled: true }) }
-      );
-      setWaConfigured(d.configured);
-      setWaMasked(d.phone_number_masked);
-      setWaEnabled(d.enabled);
-      setWaMsg({ text: "✓ Saved! Alerts are now ON.", ok: true });
-      setWaEditing(false);
-      setWaPhone("");
-    } catch (e: any) {
-      setWaMsg({ text: e.message || "Failed to save number", ok: false });
-    } finally {
-      setWaSaving(false);
-    }
-  };
-
-  const removeWhatsApp = async () => {
-    if (!window.confirm("Remove your WhatsApp number and disable alerts?")) return;
-    setWaSaving(true);
-    try {
-      await apiJson("/user/whatsapp", { method: "DELETE" });
-      setWaConfigured(false);
-      setWaMasked("");
-      setWaEnabled(false);
-      setWaEditing(false);
-      setWaMsg({ text: "Alerts disabled.", ok: true });
-    } catch (e: any) {
-      setWaMsg({ text: e.message || "Failed to remove", ok: false });
-    } finally {
-      setWaSaving(false);
-    }
-  };
-
-  const toggleWhatsApp = async () => {
-    setWaSaving(true);
-    try {
-      const d = await apiJson<{ enabled: boolean }>(
-        "/user/whatsapp",
-        { method: "PUT", body: JSON.stringify({ phone_number: waMasked, enabled: !waEnabled }) }
-      );
-      setWaEnabled(d.enabled);
-      setWaMsg({ text: d.enabled ? "✓ Alerts ON" : "Alerts paused", ok: true });
-    } catch {
-      // ignore
-    } finally {
-      setWaSaving(false);
-    }
-  };
-
-  const sendWhatsAppTest = async () => {
-    setWaSaving(true);
-    setWaMsg({ text: "Sending test message…", ok: true });
-    try {
-      const d = await apiJson<{
-        delivered_per_meta: boolean;
-        status_code: number | null;
-        meta_response: string;
-        error: string | null;
-      }>("/user/whatsapp/test", { method: "POST" });
-      if (d.delivered_per_meta) {
-        setWaMsg({
-          text: "✓ Test sent! Check your WhatsApp for a 'Hello World' message within ~30 seconds.",
-          ok: true,
-        });
-      } else {
-        setWaMsg({
-          text: `Meta rejected the send (status ${d.status_code ?? "n/a"}). ${d.error || d.meta_response || ""}`.slice(0, 200),
-          ok: false,
-        });
-      }
-    } catch (e: any) {
-      setWaMsg({ text: e.message || "Test failed", ok: false });
-    } finally {
-      setWaSaving(false);
-    }
-  };
+  // WhatsApp Alerts UI removed temporarily — backend endpoints in
+  // backend/routers/watchlist.py remain intact for when we re-introduce it.
 
   // Initial load: check auth then fetch lists (auto-creating a default if empty)
   useEffect(() => {
@@ -222,10 +119,8 @@ export default function WatchlistPanel({ onSelectStock, onPortfoliosChange }: Pr
         if (!cancelled) setLoading(false);
       }
     })();
-    // Load WhatsApp settings in parallel
-    loadWhatsAppSettings();
     return () => { cancelled = true; };
-  }, [loadWhatsAppSettings]);
+  }, []);
 
   const active = lists.find((l) => l.id === activeId) || null;
   const suggestions = NIFTY_STOCKS.filter(
@@ -577,174 +472,7 @@ export default function WatchlistPanel({ onSelectStock, onPortfoliosChange }: Pr
         </div>
       )}
 
-      {/* ── WhatsApp Alerts ──────────────────────────────────────────────── */}
-      {authed && (
-        <div style={{
-          marginTop: 20,
-          paddingTop: 16,
-          borderTop: "1px solid var(--border)",
-        }}>
-          {/* Section header */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              {/* WhatsApp SVG icon */}
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="#25D366" xmlns="http://www.w3.org/2000/svg">
-                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
-                <path d="M12 0C5.373 0 0 5.373 0 12c0 2.117.554 4.103 1.523 5.826L.057 23.57a.75.75 0 0 0 .92.92l5.744-1.466A11.945 11.945 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.75a9.734 9.734 0 0 1-4.964-1.357l-.356-.213-3.69.942.977-3.58-.232-.369A9.733 9.733 0 0 1 2.25 12C2.25 6.615 6.615 2.25 12 2.25S21.75 6.615 21.75 12 17.385 21.75 12 21.75z"/>
-              </svg>
-              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--fg)", transition: "color 0.2s ease" }}>
-                WhatsApp Alerts
-              </span>
-            </div>
-            {/* Status badge */}
-            {waConfigured && (
-              <span style={{
-                fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 10,
-                background: waEnabled ? "rgba(37,211,102,0.12)" : "var(--border)",
-                color: waEnabled ? "#25D366" : "var(--muted)",
-                letterSpacing: "0.04em", textTransform: "uppercase",
-                transition: "all 0.3s ease",
-              }}>
-                {waEnabled ? "● ON" : "PAUSED"}
-              </span>
-            )}
-          </div>
-
-          {/* Configured state */}
-          {waConfigured && !waEditing && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{
-                display: "flex", alignItems: "center", justifyContent: "space-between",
-                padding: "8px 10px", borderRadius: 8,
-                background: "rgba(37,211,102,0.06)", border: "1px solid rgba(37,211,102,0.2)",
-              }}>
-                <span style={{ fontSize: 12, color: "var(--fg)", fontFamily: "monospace" }}>{waMasked}</span>
-                <button
-                  onClick={toggleWhatsApp}
-                  disabled={waSaving}
-                  title={waEnabled ? "Pause alerts" : "Resume alerts"}
-                  style={{
-                    fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 6,
-                    border: "none", cursor: "pointer",
-                    background: waEnabled ? "rgba(239,68,68,0.1)" : "rgba(37,211,102,0.15)",
-                    color: waEnabled ? "#ef4444" : "#25D366",
-                    transition: "all 0.2s ease",
-                  }}
-                >
-                  {waSaving ? "…" : waEnabled ? "Pause" : "Resume"}
-                </button>
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  onClick={() => { setWaEditing(true); setWaMsg(null); }}
-                  style={{ flex: 1, fontSize: 11, padding: "4px 0", background: "none", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer", color: "var(--muted)" }}
-                >
-                  Change number
-                </button>
-                <button
-                  onClick={removeWhatsApp}
-                  disabled={waSaving}
-                  style={{ flex: 1, fontSize: 11, padding: "4px 0", background: "none", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 6, cursor: "pointer", color: "#ef4444" }}
-                >
-                  Remove
-                </button>
-              </div>
-              <button
-                onClick={sendWhatsAppTest}
-                disabled={waSaving}
-                style={{
-                  width: "100%", fontSize: 11, fontWeight: 600, padding: "6px 0",
-                  background: "rgba(37,211,102,0.1)",
-                  color: "#25D366",
-                  border: "1px solid rgba(37,211,102,0.3)", borderRadius: 6,
-                  cursor: waSaving ? "default" : "pointer",
-                  transition: "all 0.2s ease",
-                }}
-              >
-                {waSaving ? "Sending…" : "Send test message"}
-              </button>
-            </div>
-          )}
-
-          {/* Not configured / editing state */}
-          {(!waConfigured || waEditing) && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <p style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.5, margin: 0 }}>
-                {waConfigured
-                  ? "Enter your new WhatsApp number:"
-                  : "Get breaking news on WhatsApp automatically whenever MarketPulse finds new articles matching your portfolio."
-                }
-              </p>
-              <input
-                type="tel"
-                placeholder="+919876543210"
-                value={waPhone}
-                onChange={(e) => setWaPhone(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") saveWhatsApp(); }}
-                style={{
-                  width: "100%", padding: "7px 10px",
-                  border: "1px solid var(--border)", borderRadius: 6,
-                  fontSize: 13, outline: "none",
-                  background: "var(--bg)", color: "var(--fg)",
-                  fontFamily: "monospace",
-                  boxSizing: "border-box",
-                  transition: "border-color 0.2s ease",
-                }}
-              />
-              <div style={{ display: "flex", gap: 6 }}>
-                <button
-                  onClick={saveWhatsApp}
-                  disabled={waSaving || !waPhone.trim()}
-                  style={{
-                    flex: 1, fontSize: 12, fontWeight: 600, padding: "6px 0",
-                    background: waPhone.trim() ? "#25D366" : "var(--border)",
-                    color: waPhone.trim() ? "#fff" : "var(--muted)",
-                    border: "none", borderRadius: 6,
-                    cursor: waPhone.trim() ? "pointer" : "default",
-                    transition: "all 0.2s ease",
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                  }}
-                >
-                  {waSaving ? "Saving…" : (
-                    <>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347zM12 0C5.373 0 0 5.373 0 12c0 2.117.554 4.103 1.523 5.826L.057 23.57a.75.75 0 0 0 .92.92l5.744-1.466A11.945 11.945 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0z"/>
-                      </svg>
-                      Enable Alerts
-                    </>
-                  )}
-                </button>
-                {waEditing && (
-                  <button
-                    onClick={() => { setWaEditing(false); setWaPhone(""); setWaMsg(null); }}
-                    style={{ fontSize: 11, padding: "6px 10px", background: "none", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer", color: "var(--muted)" }}
-                  >
-                    Cancel
-                  </button>
-                )}
-              </div>
-              {!waConfigured && (
-                <p style={{ fontSize: 10, color: "var(--muted)", margin: 0, lineHeight: 1.4 }}>
-                  Include country code, e.g. <span style={{ fontFamily: "monospace" }}>+91</span> for India.{" "}
-                  Powered by WhatsApp Cloud API.
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Feedback message */}
-          {waMsg && (
-            <p style={{
-              fontSize: 11, marginTop: 8, padding: "5px 8px", borderRadius: 6,
-              background: waMsg.ok ? "rgba(37,211,102,0.08)" : "rgba(239,68,68,0.08)",
-              color: waMsg.ok ? "#25D366" : "#ef4444",
-              border: `1px solid ${waMsg.ok ? "rgba(37,211,102,0.25)" : "rgba(239,68,68,0.25)"}`,
-            }}>
-              {waMsg.text}
-            </p>
-          )}
-        </div>
-      )}
+      {/* WhatsApp Alerts UI removed temporarily; backend endpoints remain. */}
     </div>
   );
 }

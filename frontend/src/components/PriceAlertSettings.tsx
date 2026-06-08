@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Bell, BellRing, Volume2, X } from "lucide-react";
+import { Bell, BellRing, X } from "lucide-react";
 import { apiJson, AuthError } from "@/lib/api";
-import { playAlarm } from "./PriceAlertWatcher";
 import { publishQuote, useQuote } from "@/lib/quoteStore";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -349,23 +348,6 @@ export default function PriceAlertSettings({ ticker, currentPrice }: Props) {
               </button>
             )}
           </div>
-
-          {/* Audio smoke-test — the click itself is a user gesture so this
-              also primes the browser's AudioContext for later auto-fires. */}
-          <button
-            onClick={() => playAlarm("above")}
-            title="Play the alarm once to confirm sound is working"
-            style={{
-              marginTop: 8, width: "100%", fontSize: 11,
-              padding: "5px 8px",
-              background: "none", color: "var(--muted)",
-              border: "1px dashed var(--border)", borderRadius: 4,
-              cursor: "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-            }}
-          >
-            <Volume2 size={11} /> Test sound
-          </button>
         </div>
       )}
     </div>
