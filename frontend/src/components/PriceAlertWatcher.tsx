@@ -745,20 +745,37 @@ export default function PriceAlertWatcher() {
                 Now ₹{livePrice.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
               </div>
             </div>
-            <button
-              onClick={() => dismiss(t.id)}
-              aria-label="Dismiss"
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                color: "var(--muted)",
-                padding: 2,
-                display: "flex",
-              }}
-            >
-              <X size={14} />
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <button
+                onClick={toggleMute}
+                aria-label={muted ? "Unmute alarm sound" : "Mute alarm sound"}
+                title={muted ? "Unmute alarm sound" : "Mute alarm sound"}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: muted ? "var(--muted)" : "var(--fg)",
+                  padding: 2,
+                  display: "flex",
+                }}
+              >
+                {muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+              </button>
+              <button
+                onClick={() => dismiss(t.id)}
+                aria-label="Dismiss"
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "var(--muted)",
+                  padding: 2,
+                  display: "flex",
+                }}
+              >
+                <X size={14} />
+              </button>
+            </div>
           </div>
         );
       })}
