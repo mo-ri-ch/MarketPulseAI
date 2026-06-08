@@ -526,6 +526,12 @@ export default function PriceAlertWatcher() {
       saveTriggerState(next);
 
       if (newToasts.length > 0) {
+        // Update the ref synchronously BEFORE startAlarmLoop runs. The loop's
+        // `isAnyConditionActive` check reads toastsRef.current, and React's
+        // toasts-sync effect doesn't run until after the next render — so
+        // without this the very first alarm would silently bail out because
+        // the ref still saw the old (empty) toast list.
+        toastsRef.current = [...toastsRef.current, ...newToasts];
         setToasts((prev) => [...prev, ...newToasts]);
         // Remember the most recent direction so the looping siren can vary
         // its pitch when fresh crossings stack on top of older toasts.
