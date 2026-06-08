@@ -9,6 +9,9 @@ const ALERTS_POLL_MS = 30_000;
 const QUOTES_POLL_MS = 10_000;
 const TRIGGER_STATE_KEY = "priceAlertsTriggered";
 const MUTED_KEY = "priceAlertsSoundMuted";
+// The siren itself is ~1.6s long. Loop slightly slower so each iteration has
+// a brief gap, like a real alarm-clock cadence.
+const ALARM_LOOP_MS = 1800;
 
 interface PriceAlert {
   ticker: string;
@@ -143,6 +146,11 @@ function playConfirm() {
  *   - The latch clears as soon as the price returns inside the band, so the
  *     next crossing re-alerts.
  *   - Latch state is persisted to localStorage so navigation doesn't reset it.
+ *
+ * Sound:
+ *   - The siren loops continuously while at least one toast is on screen
+ *     and the user hasn't muted. It only stops when the user clicks the
+ *     mute toggle or dismisses the toast(s).
  */
 export default function PriceAlertWatcher() {
   const [authed, setAuthed] = useState(false);
@@ -152,6 +160,32 @@ export default function PriceAlertWatcher() {
   const triggerRef = useRef<TriggerState>({});
   const mutedRef = useRef(false);
   const toastIdRef = useRef(1);
+  // Continuous-alarm bookkeeping. The loop keeps blasting the siren every
+  // ALARM_LOOP_MS until either the user mutes or every toast is dismissed.
+  const alarmTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastSideRef = useRef<"above" | "below">("above");
+
+  const stopAlarmLoop = useCallback(() => {
+    if (alarmTimerRef.current) {
+      clearInterval(alarmTimerRef.current);
+      alarmTimerRef.current = null;
+    }
+  }, []);
+
+  const startAlarmLoop = useCallback(() => {
+    if (mutedRef.current) return;
+    if (alarmTimerRef.current) return;
+    // First blast immediately so the user hears something the instant the
+    // toast appears — the interval handles every loop after that.
+    playAlarm(lastSideRef.current);
+    alarmTimerRef.current = setInterval(() => {
+      if (mutedRef.current) {
+        stopAlarmLoop();
+        return;
+      }
+      playAlarm(lastSideRef.current);
+    }, ALARM_LOOP_MS);
+  }, [stopAlarmLoop]);
 
   // Pick up auth state once on mount. The login flow does a full page nav so a
   // remount is enough to re-evaluate.
@@ -172,8 +206,15 @@ export default function PriceAlertWatcher() {
     } catch {
       // ignore
     }
-    // Play a tiny confirmation tone when *un*muting so the user knows it works.
-    if (!next) playConfirm();
+    if (next) {
+      // Mute click is the user's explicit "stop the racket" gesture.
+      stopAlarmLoop();
+    } else {
+      playConfirm();
+      // If there are still active toasts, resume the looping siren —
+      // unmute should re-arm the alarm, not just allow future events.
+      if (toasts.length > 0) startAlarmLoop();
+    }
   };
 
   // Poll the user's configured alerts. Only one in-flight request at a time.
@@ -302,13 +343,12 @@ export default function PriceAlertWatcher() {
 
       if (newToasts.length > 0) {
         setToasts((prev) => [...prev, ...newToasts]);
-        // Audio cue — one alarm per side present in this batch, so a multi-stock
-        // crossing doesn't pile up into overlapping sirens.
-        if (!mutedRef.current) {
-          const sides = new Set(newToasts.map((t) => t.side));
-          if (sides.has("above")) playAlarm("above");
-          if (sides.has("below")) playAlarm("below");
-        }
+        // Remember the most recent direction so the looping siren can vary
+        // its pitch when fresh crossings stack on top of older toasts.
+        lastSideRef.current = newToasts[newToasts.length - 1].side;
+        // Continuous alarm — the loop keeps the siren going until the user
+        // mutes or dismisses every toast.
+        startAlarmLoop();
         // Best-effort browser notification — works if the page is in another tab.
         if (typeof window !== "undefined" && "Notification" in window) {
           if (Notification.permission === "granted") {
@@ -341,7 +381,14 @@ export default function PriceAlertWatcher() {
   }, [authed]);
 
   const dismiss = (id: number) =>
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+    setToasts((prev) => {
+      const remaining = prev.filter((t) => t.id !== id);
+      if (remaining.length === 0) stopAlarmLoop();
+      return remaining;
+    });
+
+  // Cleanly stop the interval when the watcher unmounts (e.g. logout).
+  useEffect(() => stopAlarmLoop, [stopAlarmLoop]);
 
   const hasArmed = alerts.some((a) => a.above != null || a.below != null);
   if (!authed || (!hasArmed && toasts.length === 0)) return null;
