@@ -165,7 +165,7 @@ export default function WatchlistPanel({ onSelectStock, onPortfoliosChange }: Pr
 
   const sendWhatsAppTest = async () => {
     setWaSaving(true);
-    setWaMsg({ text: "Sending test message…", ok: true });
+    setWaMsg({ text: "Sending sample alert…", ok: true });
     try {
       const d = await apiJson<{
         delivered_per_meta: boolean;
@@ -175,7 +175,7 @@ export default function WatchlistPanel({ onSelectStock, onPortfoliosChange }: Pr
       }>("/user/whatsapp/test", { method: "POST" });
       if (d.delivered_per_meta) {
         setWaMsg({
-          text: "✓ Test sent! Check your WhatsApp for the breaking-news template within ~30 seconds.",
+          text: "✓ Test sent! Check your WhatsApp for a sample price alert within a few seconds.",
           ok: true,
         });
       } else {
@@ -613,6 +613,9 @@ export default function WatchlistPanel({ onSelectStock, onPortfoliosChange }: Pr
           {/* Configured state */}
           {waConfigured && !waEditing && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <p style={{ fontSize: 10, color: "var(--muted)", margin: 0, lineHeight: 1.4 }}>
+                You&apos;ll get a WhatsApp message when any watchlist stock crosses an alert threshold you&apos;ve set via the bell icon.
+              </p>
               <div style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between",
                 padding: "8px 10px", borderRadius: 8,
@@ -652,6 +655,7 @@ export default function WatchlistPanel({ onSelectStock, onPortfoliosChange }: Pr
               <button
                 onClick={sendWhatsAppTest}
                 disabled={waSaving}
+                title="Send a sample price alert to your WhatsApp number using the approved template — verifies the pipeline end-to-end."
                 style={{
                   width: "100%", fontSize: 11, fontWeight: 600, padding: "6px 0",
                   background: "rgba(37,211,102,0.1)",
@@ -661,7 +665,7 @@ export default function WatchlistPanel({ onSelectStock, onPortfoliosChange }: Pr
                   transition: "all 0.2s ease",
                 }}
               >
-                {waSaving ? "Sending…" : "Send test message"}
+                {waSaving ? "Sending…" : "Send sample alert"}
               </button>
             </div>
           )}
@@ -672,7 +676,7 @@ export default function WatchlistPanel({ onSelectStock, onPortfoliosChange }: Pr
               <p style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.5, margin: 0 }}>
                 {waConfigured
                   ? "Enter your new WhatsApp number:"
-                  : "Get breaking news on WhatsApp automatically whenever MarketPulse finds new articles matching your portfolio."
+                  : "Get a WhatsApp message the moment one of your watchlist stocks crosses an above/below threshold you set — so you can act without watching the screen."
                 }
               </p>
               <input
