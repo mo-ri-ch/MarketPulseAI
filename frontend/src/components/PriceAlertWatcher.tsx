@@ -472,11 +472,16 @@ export default function PriceAlertWatcher() {
     const evaluate = (quotes: Record<string, Quote>) => {
       const next = { ...triggerRef.current };
       const newToasts: Toast[] = [];
+      // Every fresh crossing (price was inside the band on the previous tick,
+      // out of band on this one) — even when dedup keeps us from pushing a
+      // second toast. The alarm fires on any fresh crossing, so it restarts
+      // when the price dips out → in → out again.
+      const freshSides: ("above" | "below")[] = [];
 
       // Dedup helper: skip pushing a fresh toast if an identical one is
       // already on screen for the same (ticker, side, threshold). The price
-      // inside that toast will update via liveQuotes, and the looping siren
-      // will already be running, so a second card adds nothing.
+      // inside that toast will update via liveQuotes, so a second card adds
+      // nothing. The alarm, however, still fires (see freshSides).
       const existing = toastsRef.current;
       const alreadyShown = (
         ticker: string,
@@ -515,6 +520,7 @@ export default function PriceAlertWatcher() {
               });
             }
             state.above = { triggered: true, at: a.above };
+            freshSides.push("above");
           } else if (q.value < a.above && state.above.triggered) {
             state.above = { triggered: false, at: null };
           }
@@ -536,6 +542,7 @@ export default function PriceAlertWatcher() {
               });
             }
             state.below = { triggered: true, at: a.below };
+            freshSides.push("below");
           } else if (q.value > a.below && state.below.triggered) {
             state.below = { triggered: false, at: null };
           }
@@ -554,22 +561,23 @@ export default function PriceAlertWatcher() {
 
       triggerRef.current = next;
 
+      // Push any new toasts into state. We sync toastsRef synchronously so
+      // the alarm-start path below sees the fresh list immediately, before
+      // React's render-driven effect catches up.
       if (newToasts.length > 0) {
-        // Update the ref synchronously BEFORE startAlarmLoop runs. The loop's
-        // `isAnyConditionActive` check reads toastsRef.current, and React's
-        // toasts-sync effect doesn't run until after the next render — so
-        // without this the very first alarm would silently bail out because
-        // the ref still saw the old (empty) toast list.
         toastsRef.current = [...toastsRef.current, ...newToasts];
         setToasts((prev) => [...prev, ...newToasts]);
-        // Remember the most recent direction so the looping siren can vary
-        // its pitch when fresh crossings stack on top of older toasts.
-        lastSideRef.current = newToasts[newToasts.length - 1].side;
-        // Continuous alarm — the loop keeps the siren going until the user
-        // mutes or dismisses every toast.
+      }
+
+      // Any fresh crossing restarts the looping siren — even if dedup kept
+      // the toast itself singular. That way the user gets noise back when a
+      // stock re-exits the safe band after returning to it briefly.
+      if (freshSides.length > 0) {
+        lastSideRef.current = freshSides[freshSides.length - 1];
         startAlarmLoop();
-        // Best-effort browser notification — works if the page is in another tab.
-        if (typeof window !== "undefined" && "Notification" in window) {
+        // Browser notifications only fire for genuinely new toasts so we
+        // don't spam the OS notification centre on every re-cross.
+        if (newToasts.length > 0 && typeof window !== "undefined" && "Notification" in window) {
           if (Notification.permission === "granted") {
             for (const t of newToasts) {
               new Notification(
