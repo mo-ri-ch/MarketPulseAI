@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Plus, X } from "lucide-react";
 import { apiJson, isLoggedIn, AuthError } from "@/lib/api";
+import PriceAlertSettings from "./PriceAlertSettings";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const QUOTES_POLL_MS = 10_000;
@@ -475,6 +476,7 @@ export default function WatchlistPanel({ onSelectStock, onPortfoliosChange }: Pr
                     </span>
                   );
                 })()}
+                <PriceAlertSettings ticker={ticker} currentPrice={quotes[ticker]?.value} />
                 <button
                   onClick={(e) => { e.stopPropagation(); removeStock(ticker); }}
                   style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 0, display: "flex" }}

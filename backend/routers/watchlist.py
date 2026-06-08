@@ -5,12 +5,18 @@ All watchlist endpoints are scoped to the authenticated user via the
 get_current_user dependency. The previous `user_id` query param was insecure
 (any client could read/edit anyone else's watchlist) and has been removed.
 """
+import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from database import get_db
 from auth import get_current_user
 import models
+
+# Alert.type value used by the in-page price alert system. Kept distinct from
+# the legacy 'PRICE' alerts that the email evaluator handles so the two stay
+# decoupled.
+PRICE_WEB = "PRICE_WEB"
 
 router = APIRouter()
 
@@ -251,6 +257,118 @@ async def send_whatsapp_test(
             "the dispatcher to use it."
         ),
     }
+
+
+# ── In-page Price Alerts ───────────────────────────────────────────────────────
+# Per-ticker (above/below) price thresholds rendered as toasts in the web UI.
+# Stored in the existing Alert table with type=PRICE_WEB and condition encoded
+# as JSON like {"above": 1500.0, "below": 1200.0}. Either side may be null.
+
+class PriceAlertIn(BaseModel):
+    above: float | None = None
+    below: float | None = None
+
+
+def _decode_thresholds(condition: str | None) -> dict:
+    if not condition:
+        return {"above": None, "below": None}
+    try:
+        raw = json.loads(condition)
+        above = raw.get("above")
+        below = raw.get("below")
+        return {
+            "above": float(above) if above is not None else None,
+            "below": float(below) if below is not None else None,
+        }
+    except (ValueError, TypeError):
+        return {"above": None, "below": None}
+
+
+def _price_alert_row(db: Session, user_id: int, ticker: str) -> models.Alert | None:
+    return (
+        db.query(models.Alert)
+        .filter(
+            models.Alert.user_id == user_id,
+            models.Alert.type == PRICE_WEB,
+            models.Alert.target == ticker,
+        )
+        .first()
+    )
+
+
+@router.get("/price-alerts")
+def list_price_alerts(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    rows = (
+        db.query(models.Alert)
+        .filter(
+            models.Alert.user_id == current_user.id,
+            models.Alert.type == PRICE_WEB,
+            models.Alert.is_active == True,
+        )
+        .all()
+    )
+    return [
+        {"ticker": r.target.upper(), **_decode_thresholds(r.condition)}
+        for r in rows
+    ]
+
+
+@router.put("/price-alerts/{ticker}")
+def upsert_price_alert(
+    ticker: str,
+    data: PriceAlertIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Set (or clear) the above/below thresholds for one ticker.
+
+    Passing both fields as null removes the alert outright so the watcher
+    stops considering it.
+    """
+    ticker = ticker.upper().strip()
+    if not ticker:
+        raise HTTPException(status_code=400, detail="Ticker required")
+
+    row = _price_alert_row(db, current_user.id, ticker)
+
+    if data.above is None and data.below is None:
+        if row:
+            db.delete(row)
+            db.commit()
+        return {"ticker": ticker, "above": None, "below": None}
+
+    condition = json.dumps({"above": data.above, "below": data.below})
+    if row:
+        row.condition = condition
+        row.is_active = True
+    else:
+        row = models.Alert(
+            user_id=current_user.id,
+            type=PRICE_WEB,
+            target=ticker,
+            condition=condition,
+            is_active=True,
+        )
+        db.add(row)
+    db.commit()
+    return {"ticker": ticker, "above": data.above, "below": data.below}
+
+
+@router.delete("/price-alerts/{ticker}")
+def delete_price_alert(
+    ticker: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    ticker = ticker.upper().strip()
+    row = _price_alert_row(db, current_user.id, ticker)
+    if row:
+        db.delete(row)
+        db.commit()
+    return {"ticker": ticker, "removed": True}
 
 
 # ── Alerts ─────────────────────────────────────────────────────────────────────
