@@ -54,50 +54,80 @@ function saveTriggerState(s: TriggerState) {
   }
 }
 
-/**
- * Generate a short two-tone beep with the Web Audio API. No audio asset
- * needed. The "above" cue rises, the "below" cue falls — gives the user a
- * directional hint before they even read the toast.
- *
- * Browsers block AudioContext creation until a user gesture has happened on
- * the page; we cache the context on `window` so the first armed user-click
- * (saving an alert, dismissing a toast, etc.) unlocks it for later auto-plays.
- */
-function playBeep(side: "above" | "below") {
-  if (typeof window === "undefined") return;
-  try {
-    const w = window as unknown as {
-      __priceAlertAudio?: AudioContext;
-      AudioContext: typeof AudioContext;
-      webkitAudioContext?: typeof AudioContext;
-    };
-    const Ctor = w.AudioContext || w.webkitAudioContext;
-    if (!Ctor) return;
-    if (!w.__priceAlertAudio) w.__priceAlertAudio = new Ctor();
-    const ctx = w.__priceAlertAudio;
-    if (ctx.state === "suspended") ctx.resume().catch(() => {});
+function getAudioContext(): AudioContext | null {
+  if (typeof window === "undefined") return null;
+  const w = window as unknown as {
+    __priceAlertAudio?: AudioContext;
+    AudioContext: typeof AudioContext;
+    webkitAudioContext?: typeof AudioContext;
+  };
+  const Ctor = w.AudioContext || w.webkitAudioContext;
+  if (!Ctor) return null;
+  if (!w.__priceAlertAudio) w.__priceAlertAudio = new Ctor();
+  const ctx = w.__priceAlertAudio;
+  if (ctx.state === "suspended") ctx.resume().catch(() => {});
+  return ctx;
+}
 
+/**
+ * Synthesize a repeating alarm-clock-style siren via the Web Audio API.
+ * Square waves + alternating high/low tones give it the urgent "wake up"
+ * character, and the pattern is direction-aware so the same audio cue
+ * doubles as a hint (above = higher band, below = lower band).
+ *
+ * Browsers block AudioContext creation until a user gesture; we cache the
+ * context on `window` so the first user click unlocks it for later auto-plays.
+ */
+function playAlarm(side: "above" | "below") {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  try {
     const now = ctx.currentTime;
-    const [f1, f2] = side === "above" ? [660, 990] : [660, 415];
-    const tones: Array<[number, number]> = [
-      [f1, now],
-      [f2, now + 0.14],
-    ];
-    for (const [freq, start] of tones) {
+    // Six alternating tones ≈ 1.6 s — long enough to grab attention but not
+    // so long it loops past the toast settling on screen.
+    const [hi, lo] = side === "above" ? [988, 740] : [523, 392]; // B5/F#5 vs C5/G4
+    const toneSec = 0.22;
+    const gapSec = 0.05;
+    const step = toneSec + gapSec;
+    for (let i = 0; i < 6; i++) {
+      const freq = i % 2 === 0 ? hi : lo;
+      const start = now + i * step;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = "sine";
+      osc.type = "square"; // harsher, alarm-like timbre
       osc.frequency.setValueAtTime(freq, start);
-      // Quick attack/decay envelope so it sounds like a chime, not a buzz.
+      // Punchy attack, sustained body, short release — like a buzzer.
       gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.exponentialRampToValueAtTime(0.18, start + 0.015);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.13);
+      gain.gain.exponentialRampToValueAtTime(0.28, start + 0.012);
+      gain.gain.setValueAtTime(0.28, start + toneSec - 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + toneSec);
       osc.connect(gain).connect(ctx.destination);
       osc.start(start);
-      osc.stop(start + 0.16);
+      osc.stop(start + toneSec + 0.02);
     }
   } catch {
     // Audio not available — silently fall back to visual-only.
+  }
+}
+
+/** Short single chirp used only to confirm an unmute action. */
+function playConfirm() {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  try {
+    const start = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(880, start);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(0.15, start + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.12);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(start);
+    osc.stop(start + 0.14);
+  } catch {
+    // ignore
   }
 }
 
@@ -143,7 +173,7 @@ export default function PriceAlertWatcher() {
       // ignore
     }
     // Play a tiny confirmation tone when *un*muting so the user knows it works.
-    if (!next) playBeep("above");
+    if (!next) playConfirm();
   };
 
   // Poll the user's configured alerts. Only one in-flight request at a time.
@@ -272,12 +302,12 @@ export default function PriceAlertWatcher() {
 
       if (newToasts.length > 0) {
         setToasts((prev) => [...prev, ...newToasts]);
-        // Audio cue — one beep per side present in this batch, so a multi-stock
-        // crossing doesn't pile up into a noisy cascade.
+        // Audio cue — one alarm per side present in this batch, so a multi-stock
+        // crossing doesn't pile up into overlapping sirens.
         if (!mutedRef.current) {
           const sides = new Set(newToasts.map((t) => t.side));
-          if (sides.has("above")) playBeep("above");
-          if (sides.has("below")) playBeep("below");
+          if (sides.has("above")) playAlarm("above");
+          if (sides.has("below")) playAlarm("below");
         }
         // Best-effort browser notification — works if the page is in another tab.
         if (typeof window !== "undefined" && "Notification" in window) {
