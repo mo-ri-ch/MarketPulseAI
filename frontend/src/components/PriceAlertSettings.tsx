@@ -4,6 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { Bell, BellRing, X } from "lucide-react";
 import { apiJson, AuthError } from "@/lib/api";
 
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// While the popover is open, fetch this ticker's quote on a faster cadence
+// than the watchlist's 10 s tick so the "Current ₹…" line feels live as the
+// user is picking their threshold.
+const POP_QUOTE_POLL_MS = 3000;
+
 interface Props {
   ticker: string;
   currentPrice?: number;
@@ -23,7 +29,16 @@ export default function PriceAlertSettings({ ticker, currentPrice }: Props) {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [active, setActive] = useState<Threshold>({ ticker, above: null, below: null });
+  // Live price refreshed by the popover's own poll. Falls back to the parent
+  // watchlist's slower-ticking prop value before the first fetch lands.
+  const [livePrice, setLivePrice] = useState<number | undefined>(currentPrice);
   const popRef = useRef<HTMLDivElement | null>(null);
+
+  // Keep livePrice in sync with the parent's prop whenever the popover is
+  // closed (so opening it later starts from the freshest known value).
+  useEffect(() => {
+    if (!open && currentPrice !== undefined) setLivePrice(currentPrice);
+  }, [currentPrice, open]);
 
   // Initial fetch of just this ticker's current thresholds (so the bell can
   // show "armed" state without making the row open the popover first).
@@ -52,6 +67,40 @@ export default function PriceAlertSettings({ ticker, currentPrice }: Props) {
       setErr(null);
     }
   }, [open, active]);
+
+  // While open, hammer the quote endpoint on a short interval so the user
+  // sees the price move in real time as they think about a threshold.
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const tick = async () => {
+      try {
+        const res = await fetch(
+          `${API}/market/quotes?tickers=${encodeURIComponent(ticker)}`,
+          { cache: "no-store" },
+        );
+        if (res.ok && alive) {
+          const data = (await res.json()) as {
+            quotes: Record<string, { value: number }>;
+          };
+          const v = data.quotes?.[ticker]?.value;
+          if (typeof v === "number") setLivePrice(v);
+        }
+      } catch {
+        // Keep showing the last value on network blips.
+      } finally {
+        if (alive) timer = setTimeout(tick, POP_QUOTE_POLL_MS);
+      }
+    };
+
+    tick();
+    return () => {
+      alive = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [open, ticker]);
 
   // Close on outside click / Escape.
   useEffect(() => {
@@ -180,9 +229,35 @@ export default function PriceAlertSettings({ ticker, currentPrice }: Props) {
             </button>
           </div>
 
-          {currentPrice != null && (
-            <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8 }}>
-              Current ₹{currentPrice.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+          {livePrice != null && (
+            <div
+              style={{
+                fontSize: 11,
+                color: "var(--muted)",
+                marginBottom: 8,
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <span
+                aria-hidden
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  background: "#22c55e",
+                  display: "inline-block",
+                  animation: "priceAlertLiveDot 1.4s ease-in-out infinite",
+                }}
+              />
+              Current ₹{livePrice.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+              <style>{`
+                @keyframes priceAlertLiveDot {
+                  0%, 100% { opacity: 1; }
+                  50% { opacity: 0.35; }
+                }
+              `}</style>
             </div>
           )}
 
