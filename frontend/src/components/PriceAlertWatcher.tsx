@@ -73,6 +73,41 @@ function getAudioContext(): AudioContext | null {
 }
 
 /**
+ * Browsers block AudioContext playback until the page has seen a real user
+ * gesture. Wire up a one-shot listener so the very first click, key press,
+ * or touch creates+resumes the context — afterwards every auto-fired alarm
+ * (which has no gesture of its own) can play without the autoplay policy
+ * silently swallowing it.
+ */
+export function installAudioUnlock() {
+  if (typeof window === "undefined") return;
+  const flagKey = "__priceAlertAudioUnlocked";
+  const w = window as unknown as Record<string, unknown>;
+  if (w[flagKey]) return;
+  const unlock = () => {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    // A single silent buffer play is the safest way to fully unlock iOS Safari.
+    try {
+      const buf = ctx.createBuffer(1, 1, 22050);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.start(0);
+    } catch {
+      // ignore
+    }
+    w[flagKey] = true;
+    window.removeEventListener("pointerdown", unlock);
+    window.removeEventListener("keydown", unlock);
+    window.removeEventListener("touchstart", unlock);
+  };
+  window.addEventListener("pointerdown", unlock, { once: false });
+  window.addEventListener("keydown", unlock, { once: false });
+  window.addEventListener("touchstart", unlock, { once: false });
+}
+
+/**
  * Synthesize a repeating alarm-clock-style siren via the Web Audio API.
  * Square waves + alternating high/low tones give it the urgent "wake up"
  * character, and the pattern is direction-aware so the same audio cue
@@ -81,7 +116,7 @@ function getAudioContext(): AudioContext | null {
  * Browsers block AudioContext creation until a user gesture; we cache the
  * context on `window` so the first user click unlocks it for later auto-plays.
  */
-function playAlarm(side: "above" | "below") {
+export function playAlarm(side: "above" | "below") {
   const ctx = getAudioContext();
   if (!ctx) return;
   try {
@@ -249,6 +284,10 @@ export default function PriceAlertWatcher() {
     const m = localStorage.getItem(MUTED_KEY) === "1";
     setMuted(m);
     mutedRef.current = m;
+    // Audio is silently blocked by the browser until the user has interacted
+    // with the page. Wire up a one-shot unlock so the first click anywhere
+    // primes the AudioContext for later automatic alarms.
+    installAudioUnlock();
   }, []);
 
   const toggleMute = () => {
