@@ -488,7 +488,9 @@ async def market_indices(response: Response):
 
 # Cache keyed by sorted ticker set so multiple identical watchlists coalesce.
 _QUOTES_CACHE: dict[str, dict] = {}
-_QUOTES_TTL = 3.0
+# Kept short so frontend polls at ~1 s actually reach Yahoo and surface
+# fresh ticks instead of returning stale cached data.
+_QUOTES_TTL = 0.5
 
 
 def _yahoo_symbol(ticker: str) -> str:
@@ -591,7 +593,9 @@ async def market_quotes(tickers: str, response: Response):
 # ── Per-stock intraday chart ─────────────────────────────────────────────────
 
 _CHART_CACHE: dict[str, dict] = {}
-_CHART_TTL = 1.5
+# Sub-second TTL so the chart's 1 s frontend poll always pulls the freshest
+# Yahoo tick rather than handing back the previous response.
+_CHART_TTL = 0.5
 
 
 @app.get("/market/chart")

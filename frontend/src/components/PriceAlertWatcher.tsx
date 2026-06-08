@@ -11,7 +11,9 @@ import {
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const ALERTS_POLL_MS = 30_000;
-const QUOTES_POLL_MS = 10_000;
+// 1 s so the toast's "Now ₹…" line and the siren's out-of-band check track
+// the market as tightly as the chart does.
+const QUOTES_POLL_MS = 1_000;
 const TRIGGER_STATE_KEY = "priceAlertsTriggered";
 const MUTED_KEY = "priceAlertsSoundMuted";
 // The siren itself is ~1.6s long. Loop slightly slower so each iteration has

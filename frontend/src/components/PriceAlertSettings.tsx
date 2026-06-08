@@ -7,10 +7,9 @@ import { playAlarm } from "./PriceAlertWatcher";
 import { publishQuote, useQuote } from "@/lib/quoteStore";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-// While the popover is open, fetch this ticker's quote on a faster cadence
-// than the watchlist's 10 s tick so the "Current ₹…" line feels live as the
-// user is picking their threshold.
-const POP_QUOTE_POLL_MS = 3000;
+// 1 s so the popover's "Current ₹…" matches whatever the chart and the
+// watchlist row are showing as the user dials in their threshold.
+const POP_QUOTE_POLL_MS = 1_000;
 
 interface Props {
   ticker: string;

@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { publishQuote } from "@/lib/quoteStore";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const POLL_MS = 2_000;
+// 1 s = the tightest cadence Yahoo's public chart endpoint comfortably
+// supports without rate-limiting. Anything below this is wasted round-trips.
+const POLL_MS = 1_000;
 
 interface ChartData {
   name: string;

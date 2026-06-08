@@ -7,7 +7,9 @@ import { getQuoteSnapshot, publishQuotes, useQuoteVersion } from "@/lib/quoteSto
 import PriceAlertSettings from "./PriceAlertSettings";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const QUOTES_POLL_MS = 10_000;
+// 1 s cadence so the row's percent-change moves in step with the chart
+// instead of lagging it by up to ten seconds.
+const QUOTES_POLL_MS = 1_000;
 
 interface Quote {
   ticker: string;
