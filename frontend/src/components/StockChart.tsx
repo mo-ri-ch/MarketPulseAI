@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { publishQuote } from "@/lib/quoteStore";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const POLL_MS = 2_000;
@@ -110,6 +111,15 @@ export default function StockChart({ ticker }: Props) {
           prevValueRef.current = json.chart.value;
           setData(json.chart);
           setConnected(true);
+          // Broadcast the chart's authoritative value so any alert toast or
+          // popover for the same ticker shows exactly this number.
+          publishQuote(json.chart.name, {
+            value: json.chart.value,
+            change: json.chart.change,
+            change_pct: json.chart.change_pct,
+            up: json.chart.up,
+            source: "chart",
+          });
         } else {
           setConnected(false);
         }

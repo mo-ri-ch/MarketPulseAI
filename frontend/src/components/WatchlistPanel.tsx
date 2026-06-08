@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Plus, X } from "lucide-react";
 import { apiJson, isLoggedIn, AuthError } from "@/lib/api";
+import { getQuoteSnapshot, publishQuotes, useQuoteVersion } from "@/lib/quoteStore";
 import PriceAlertSettings from "./PriceAlertSettings";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -75,6 +76,9 @@ export default function WatchlistPanel({ onSelectStock, onPortfoliosChange }: Pr
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [quotes, setQuotes] = useState<Record<string, Quote>>({});
+  // Re-render the row whenever any source publishes into the shared quote
+  // store — keeps this column in lock-step with the chart's faster ticks.
+  useQuoteVersion();
   // Used to detect when the active list's tickers actually change, so the
   // polling effect doesn't re-fetch on every render.
   const tickersKeyRef = useRef<string>("");
@@ -259,7 +263,24 @@ export default function WatchlistPanel({ onSelectStock, onPortfoliosChange }: Pr
         );
         if (res.ok && alive && tickersKeyRef.current === tickersKey) {
           const data = (await res.json()) as { quotes: Record<string, Quote> };
-          setQuotes(data.quotes || {});
+          const quotes = data.quotes || {};
+          setQuotes(quotes);
+          // Push into the shared store so the alert toast / popover for any
+          // ticker in this watchlist shows the same number this row shows.
+          publishQuotes(
+            Object.fromEntries(
+              Object.entries(quotes).map(([t, q]) => [
+                t,
+                {
+                  value: q.value,
+                  change: q.change,
+                  change_pct: q.change_pct,
+                  up: q.up,
+                  source: "watchlist-poll",
+                },
+              ]),
+            ),
+          );
         }
       } catch {
         // Network blip — keep the previous quotes on screen.
@@ -458,25 +479,36 @@ export default function WatchlistPanel({ onSelectStock, onPortfoliosChange }: Pr
               <span style={{ fontWeight: 500, fontSize: 13, color: "var(--fg)" }}>{ticker}</span>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 {(() => {
-                  const q = quotes[ticker];
-                  if (!q) {
+                  // Prefer the shared store so the row matches whatever the
+                  // chart is currently showing for this ticker (and falls
+                  // back to the slower local poll otherwise).
+                  const fresh = getQuoteSnapshot(ticker);
+                  const local = quotes[ticker];
+                  const value = fresh?.value ?? local?.value;
+                  const change = fresh?.change ?? local?.change;
+                  const change_pct = fresh?.change_pct ?? local?.change_pct;
+                  const up = fresh?.up ?? local?.up;
+                  if (value == null || change_pct == null) {
                     return <span style={{ fontSize: 12, color: "var(--muted)", fontVariantNumeric: "tabular-nums" }}>—</span>;
                   }
-                  const sign = q.change_pct >= 0 ? "+" : "";
+                  const sign = change_pct >= 0 ? "+" : "";
                   return (
                     <span
-                      title={`₹${q.value.toLocaleString("en-IN", { minimumFractionDigits: 2 })}  (${sign}${q.change.toFixed(2)})`}
+                      title={`₹${value.toLocaleString("en-IN", { minimumFractionDigits: 2 })}  (${sign}${(change ?? 0).toFixed(2)})`}
                       style={{
                         fontSize: 12,
-                        color: q.up ? "var(--green)" : "var(--red)",
+                        color: up ? "var(--green)" : "var(--red)",
                         fontVariantNumeric: "tabular-nums",
                       }}
                     >
-                      {sign}{q.change_pct.toFixed(2)}%
+                      {sign}{change_pct.toFixed(2)}%
                     </span>
                   );
                 })()}
-                <PriceAlertSettings ticker={ticker} currentPrice={quotes[ticker]?.value} />
+                <PriceAlertSettings
+                  ticker={ticker}
+                  currentPrice={getQuoteSnapshot(ticker)?.value ?? quotes[ticker]?.value}
+                />
                 <button
                   onClick={(e) => { e.stopPropagation(); removeStock(ticker); }}
                   style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 0, display: "flex" }}

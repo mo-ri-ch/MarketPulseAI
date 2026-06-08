@@ -3,6 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { X, Bell, Volume2, VolumeX } from "lucide-react";
 import { apiJson, isLoggedIn, AuthError } from "@/lib/api";
+import {
+  getQuoteSnapshot,
+  publishQuotes,
+  useQuoteVersion,
+} from "@/lib/quoteStore";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const ALERTS_POLL_MS = 30_000;
@@ -198,8 +203,10 @@ export default function PriceAlertWatcher() {
   const [muted, setMuted] = useState(false);
   // Latest quote per ticker, mirrored from lastQuotesRef so toast bodies can
   // re-render with the freshest "Now ₹…" value on every poll instead of
-  // freezing at the trigger-time snapshot.
+  // freezing at the trigger-time snapshot. Also picks up the shared store's
+  // version so re-renders fire whenever the chart publishes a fresher value.
   const [liveQuotes, setLiveQuotes] = useState<Record<string, Quote>>({});
+  const storeVersion = useQuoteVersion();
   const triggerRef = useRef<TriggerState>({});
   const mutedRef = useRef(false);
   const toastIdRef = useRef(1);
@@ -232,22 +239,25 @@ export default function PriceAlertWatcher() {
    * being violated by the most recent quote. If a toast lingers but the
    * price has returned inside the band, this returns false so the siren
    * goes quiet (the toast itself stays as a visual record).
+   *
+   * Prefers the shared quoteStore (which the chart updates at ~2s) over
+   * the watcher's slower 10s poll so the siren reacts to the freshest tick.
    */
   const isAnyConditionActive = useCallback((): { active: boolean; side: "above" | "below" | null } => {
     const ts = toastsRef.current;
     if (ts.length === 0) return { active: false, side: null };
-    const quotes = lastQuotesRef.current;
+    const fallback = lastQuotesRef.current;
     const alerts = alertsRef.current;
     let activeSide: "above" | "below" | null = null;
     for (const t of ts) {
       const a = alerts.find((x) => x.ticker === t.ticker);
-      const q = quotes[t.ticker];
-      if (!a || !q) continue;
-      if (t.side === "above" && a.above != null && q.value >= a.above) {
+      if (!a) continue;
+      const fresh = getQuoteSnapshot(t.ticker);
+      const value = fresh?.value ?? fallback[t.ticker]?.value;
+      if (value == null) continue;
+      if (t.side === "above" && a.above != null && value >= a.above) {
         activeSide = "above";
-        // Keep iterating in case a later toast is "below" and would update
-        // the directional hint to the most-recent direction.
-      } else if (t.side === "below" && a.below != null && q.value <= a.below) {
+      } else if (t.side === "below" && a.below != null && value <= a.below) {
         activeSide = "below";
       }
     }
@@ -279,6 +289,16 @@ export default function PriceAlertWatcher() {
       playAlarm(lastSideRef.current);
     }, ALARM_LOOP_MS);
   }, [isAnyConditionActive, stopAlarmLoop]);
+
+  // Whenever the shared quoteStore bumps (e.g. the chart published a fresher
+  // tick), re-check whether the alarm should still be sounding. This lets
+  // the siren react to the chart's 2s cadence instead of waiting for the
+  // watcher's own 10s poll to notice the price has normalised.
+  useEffect(() => {
+    if (!alarmTimerRef.current) return;
+    const { active } = isAnyConditionActive();
+    if (!active) stopAlarmLoop();
+  }, [storeVersion, isAnyConditionActive, stopAlarmLoop]);
 
   // Pick up auth state once on mount. The login flow does a full page nav so a
   // remount is enough to re-evaluate.
@@ -375,6 +395,23 @@ export default function PriceAlertWatcher() {
           // mirror into state so live "Now ₹…" lines in toasts re-render.
           lastQuotesRef.current = quotes;
           setLiveQuotes(quotes);
+          // Broadcast into the shared store so any visible chart for the
+          // same ticker stays in sync — and so the chart's faster 2s ticks
+          // can override this slower 10s value in the toast.
+          publishQuotes(
+            Object.fromEntries(
+              Object.entries(quotes).map(([t, q]) => [
+                t,
+                {
+                  value: q.value,
+                  change: q.change,
+                  change_pct: q.change_pct,
+                  up: q.up,
+                  source: "watcher-poll",
+                },
+              ]),
+            ),
+          );
           evaluate(quotes);
           // If a previously-violating toast's price has just returned inside
           // the band, hush the siren without waiting for the next loop tick.
@@ -561,9 +598,12 @@ export default function PriceAlertWatcher() {
       {toasts.map((t) => {
         const isAbove = t.side === "above";
         const accent = isAbove ? "#22c55e" : "#ef4444";
-        // Prefer the freshest quote so "Now ₹…" tracks the market live; fall
-        // back to the trigger-time snapshot if the next poll hasn't landed.
-        const livePrice = liveQuotes[t.ticker]?.value ?? t.price;
+        // Read from the shared quoteStore first — the chart publishes there
+        // at its faster 2s cadence, keeping this number in lock-step with
+        // whatever the chart is showing. Falls back to the watcher's own
+        // 10s poll if no fresher value exists.
+        const storeSnap = getQuoteSnapshot(t.ticker);
+        const livePrice = storeSnap?.value ?? liveQuotes[t.ticker]?.value ?? t.price;
         return (
           <div
             key={t.id}

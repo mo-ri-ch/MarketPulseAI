@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Bell, BellRing, Volume2, X } from "lucide-react";
 import { apiJson, AuthError } from "@/lib/api";
 import { playAlarm } from "./PriceAlertWatcher";
+import { publishQuote, useQuote } from "@/lib/quoteStore";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 // While the popover is open, fetch this ticker's quote on a faster cadence
@@ -30,15 +31,19 @@ export default function PriceAlertSettings({ ticker, currentPrice }: Props) {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [active, setActive] = useState<Threshold>({ ticker, above: null, below: null });
-  // Live price refreshed by the popover's own poll. Falls back to the parent
-  // watchlist's slower-ticking prop value before the first fetch lands.
-  const [livePrice, setLivePrice] = useState<number | undefined>(currentPrice);
+  // Local fallback used until the shared store has a value. The store is the
+  // primary source of truth so the popover stays in lock-step with whatever
+  // the chart is showing for the same ticker.
+  const [localPrice, setLocalPrice] = useState<number | undefined>(currentPrice);
   const popRef = useRef<HTMLDivElement | null>(null);
+  const storeSnap = useQuote(ticker);
+  const livePrice = storeSnap?.value ?? localPrice;
 
-  // Keep livePrice in sync with the parent's prop whenever the popover is
-  // closed (so opening it later starts from the freshest known value).
+  // Keep the local fallback in sync with the parent's prop whenever the
+  // popover is closed (so opening it later starts from the freshest known
+  // value before the popover's own poll lands).
   useEffect(() => {
-    if (!open && currentPrice !== undefined) setLivePrice(currentPrice);
+    if (!open && currentPrice !== undefined) setLocalPrice(currentPrice);
   }, [currentPrice, open]);
 
   // Initial fetch of just this ticker's current thresholds (so the bell can
@@ -84,10 +89,21 @@ export default function PriceAlertSettings({ ticker, currentPrice }: Props) {
         );
         if (res.ok && alive) {
           const data = (await res.json()) as {
-            quotes: Record<string, { value: number }>;
+            quotes: Record<string, { value: number; change?: number; change_pct?: number; up?: boolean }>;
           };
-          const v = data.quotes?.[ticker]?.value;
-          if (typeof v === "number") setLivePrice(v);
+          const q = data.quotes?.[ticker];
+          if (q && typeof q.value === "number") {
+            // Push into the shared store so the toast (and any chart) for
+            // this ticker see the same number we're about to display.
+            publishQuote(ticker, {
+              value: q.value,
+              change: q.change,
+              change_pct: q.change_pct,
+              up: q.up,
+              source: "popover-poll",
+            });
+            setLocalPrice(q.value);
+          }
         }
       } catch {
         // Keep showing the last value on network blips.
