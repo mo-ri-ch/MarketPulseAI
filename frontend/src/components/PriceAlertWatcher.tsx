@@ -148,9 +148,13 @@ function playConfirm() {
  *   - Latch state is persisted to localStorage so navigation doesn't reset it.
  *
  * Sound:
- *   - The siren loops continuously while at least one toast is on screen
- *     and the user hasn't muted. It only stops when the user clicks the
- *     mute toggle or dismisses the toast(s).
+ *   - The siren loops as long as at least one on-screen toast is still
+ *     being violated by the live price (i.e. price is still above its
+ *     "above" threshold, or still below its "below" threshold).
+ *   - It falls silent automatically when every on-screen toast's price has
+ *     returned inside its band — the toasts stay as a visual record.
+ *   - It also stops immediately on a mute click or when every toast is
+ *     dismissed.
  */
 export default function PriceAlertWatcher() {
   const [authed, setAuthed] = useState(false);
@@ -161,9 +165,21 @@ export default function PriceAlertWatcher() {
   const mutedRef = useRef(false);
   const toastIdRef = useRef(1);
   // Continuous-alarm bookkeeping. The loop keeps blasting the siren every
-  // ALARM_LOOP_MS until either the user mutes or every toast is dismissed.
+  // ALARM_LOOP_MS while at least one on-screen toast is still violating its
+  // threshold per the latest quote; mute or dismiss-all also stops it.
   const alarmTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastSideRef = useRef<"above" | "below">("above");
+  // Most recent quote snapshot, kept in a ref so the loop's "is anything
+  // still out of band?" check stays cheap and doesn't tie into React's
+  // render cycle.
+  const lastQuotesRef = useRef<Record<string, Quote>>({});
+  const alertsRef = useRef<PriceAlert[]>([]);
+  const toastsRef = useRef<Toast[]>([]);
+
+  // Keep refs synced so callbacks captured by setInterval / setTimeout see
+  // the latest data without us having to re-create the interval.
+  useEffect(() => { alertsRef.current = alerts; }, [alerts]);
+  useEffect(() => { toastsRef.current = toasts; }, [toasts]);
 
   const stopAlarmLoop = useCallback(() => {
     if (alarmTimerRef.current) {
@@ -172,9 +188,39 @@ export default function PriceAlertWatcher() {
     }
   }, []);
 
+  /**
+   * True when at least one on-screen toast's underlying threshold is still
+   * being violated by the most recent quote. If a toast lingers but the
+   * price has returned inside the band, this returns false so the siren
+   * goes quiet (the toast itself stays as a visual record).
+   */
+  const isAnyConditionActive = useCallback((): { active: boolean; side: "above" | "below" | null } => {
+    const ts = toastsRef.current;
+    if (ts.length === 0) return { active: false, side: null };
+    const quotes = lastQuotesRef.current;
+    const alerts = alertsRef.current;
+    let activeSide: "above" | "below" | null = null;
+    for (const t of ts) {
+      const a = alerts.find((x) => x.ticker === t.ticker);
+      const q = quotes[t.ticker];
+      if (!a || !q) continue;
+      if (t.side === "above" && a.above != null && q.value >= a.above) {
+        activeSide = "above";
+        // Keep iterating in case a later toast is "below" and would update
+        // the directional hint to the most-recent direction.
+      } else if (t.side === "below" && a.below != null && q.value <= a.below) {
+        activeSide = "below";
+      }
+    }
+    return { active: activeSide !== null, side: activeSide };
+  }, []);
+
   const startAlarmLoop = useCallback(() => {
     if (mutedRef.current) return;
     if (alarmTimerRef.current) return;
+    const { active, side } = isAnyConditionActive();
+    if (!active) return;
+    if (side) lastSideRef.current = side;
     // First blast immediately so the user hears something the instant the
     // toast appears — the interval handles every loop after that.
     playAlarm(lastSideRef.current);
@@ -183,9 +229,17 @@ export default function PriceAlertWatcher() {
         stopAlarmLoop();
         return;
       }
+      const { active: stillActive, side: currentSide } = isAnyConditionActive();
+      if (!stillActive) {
+        // Price has returned inside the band for every on-screen toast — go
+        // quiet. The toast stays so the user can see what happened.
+        stopAlarmLoop();
+        return;
+      }
+      if (currentSide) lastSideRef.current = currentSide;
       playAlarm(lastSideRef.current);
     }, ALARM_LOOP_MS);
-  }, [stopAlarmLoop]);
+  }, [isAnyConditionActive, stopAlarmLoop]);
 
   // Pick up auth state once on mount. The login flow does a full page nav so a
   // remount is enough to re-evaluate.
@@ -273,7 +327,16 @@ export default function PriceAlertWatcher() {
         );
         if (res.ok && alive) {
           const data = (await res.json()) as { quotes: Record<string, Quote> };
-          evaluate(data.quotes || {});
+          const quotes = data.quotes || {};
+          // Stash for the alarm loop's "still out of band?" probe.
+          lastQuotesRef.current = quotes;
+          evaluate(quotes);
+          // If a previously-violating toast's price has just returned inside
+          // the band, hush the siren without waiting for the next loop tick.
+          if (alarmTimerRef.current) {
+            const { active } = isAnyConditionActive();
+            if (!active) stopAlarmLoop();
+          }
         }
       } catch {
         // ignore — try again next tick
@@ -383,7 +446,11 @@ export default function PriceAlertWatcher() {
   const dismiss = (id: number) =>
     setToasts((prev) => {
       const remaining = prev.filter((t) => t.id !== id);
-      if (remaining.length === 0) stopAlarmLoop();
+      // Keep the ref in sync synchronously so the active-state probe below
+      // doesn't see the about-to-be-removed toast.
+      toastsRef.current = remaining;
+      const { active } = isAnyConditionActive();
+      if (!active) stopAlarmLoop();
       return remaining;
     });
 
