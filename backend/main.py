@@ -135,13 +135,11 @@ def _run_startup_db_tasks():
 
 
 async def _price_alerts_loop():
-    """Evaluate in-page price alerts (PRICE_WEB) every 3 s and fire WhatsApp.
+    """Evaluate in-page price alerts (PRICE_WEB) every 1 s and fire WhatsApp.
 
-    Tight cadence on purpose — the whole point of the WhatsApp path is to
-    let the user act on a crossing without watching the screen. 3 s ≈ the
-    same end-to-end latency the in-page siren already has (1 s frontend
-    poll + a beat to look at the phone), so both channels feel
-    simultaneous in practice.
+    Matches the frontend chart/watcher cadence — a crossing detected by
+    the browser and a crossing detected here happen on the same tick, so
+    the on-screen siren and the WhatsApp message land essentially together.
     """
     import logging
     logger = logging.getLogger(__name__)
@@ -157,7 +155,7 @@ async def _price_alerts_loop():
                 db.close()
         except Exception as e:
             logger.warning(f"[PriceAlerts/WA] Dispatch error (non-fatal): {e}")
-        await asyncio.sleep(3)
+        await asyncio.sleep(1)
 
 
 @asynccontextmanager
