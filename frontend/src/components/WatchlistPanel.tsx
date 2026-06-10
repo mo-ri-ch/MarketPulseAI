@@ -163,19 +163,16 @@ export default function WatchlistPanel({ onSelectStock, onPortfoliosChange }: Pr
     }
   };
 
-  const sendWhatsAppTest = async (template: "pulse_alert" | "hello_world" = "pulse_alert") => {
+  const sendWhatsAppTest = async () => {
     setWaSaving(true);
-    setWaMsg({
-      text: template === "hello_world" ? "Sending hello_world diagnostic…" : "Sending sample alert…",
-      ok: true,
-    });
+    setWaMsg({ text: "Sending sample alert…", ok: true });
     try {
       const d = await apiJson<{
         delivered_per_meta: boolean;
         status_code: number | null;
         meta_response: string;
         error: string | null;
-      }>(`/user/whatsapp/test?template=${template}`, { method: "POST" });
+      }>("/user/whatsapp/test", { method: "POST" });
       if (d.delivered_per_meta) {
         setWaMsg({
           text: "✓ Test sent! Check your WhatsApp for a sample price alert within a few seconds.",
@@ -656,7 +653,7 @@ export default function WatchlistPanel({ onSelectStock, onPortfoliosChange }: Pr
                 </button>
               </div>
               <button
-                onClick={() => sendWhatsAppTest("pulse_alert")}
+                onClick={sendWhatsAppTest}
                 disabled={waSaving}
                 title="Send a sample price alert to your WhatsApp number using the approved template — verifies the pipeline end-to-end."
                 style={{
@@ -669,20 +666,6 @@ export default function WatchlistPanel({ onSelectStock, onPortfoliosChange }: Pr
                 }}
               >
                 {waSaving ? "Sending…" : "Send sample alert"}
-              </button>
-              <button
-                onClick={() => sendWhatsAppTest("hello_world")}
-                disabled={waSaving}
-                title="Diagnostic: sends Meta's built-in hello_world template through this backend. If this works but 'Send sample alert' fails with 131030, the saved number doesn't match the one you allowlisted in Meta."
-                style={{
-                  width: "100%", fontSize: 10, padding: "5px 0",
-                  background: "none", color: "var(--muted)",
-                  border: "1px dashed var(--border)", borderRadius: 6,
-                  cursor: waSaving ? "default" : "pointer",
-                  transition: "all 0.2s ease",
-                }}
-              >
-                {waSaving ? "…" : "Diagnostic: send hello_world via backend"}
               </button>
             </div>
           )}
